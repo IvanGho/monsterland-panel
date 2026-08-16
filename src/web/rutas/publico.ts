@@ -1,6 +1,5 @@
 import { Router } from "express";
-import { db } from "../../db/index.js";
-import { Repo } from "../../db/repo.js";
+import { abrirRepo } from "../../db/repo.js";
 import { formatoARS } from "../../domain/money.js";
 import { esc, layout } from "../layout.js";
 
@@ -11,15 +10,24 @@ import { esc, layout } from "../layout.js";
  */
 export const rutasPublicas = Router();
 
-rutasPublicas.get("/publico/ranking", (_req, res) => {
-  const repo = new Repo(db());
-  const temporada = repo.temporadaActiva();
+rutasPublicas.get("/publico/ranking", async (_req, res) => {
+  const repo = await abrirRepo();
+  const temporada = await repo.temporadaActiva();
   if (!temporada) {
-    res.send(layout(`<h1>Ranking</h1><p class="tenue">No hay temporada activa.</p>`, { titulo: "Ranking", publico: true }));
+    res.send(
+      layout(`<h1>Ranking</h1><p class="tenue">No hay temporada activa.</p>`, {
+        titulo: "Ranking",
+        publico: true,
+      }),
+    );
     return;
   }
-  const ranking = repo.rankingDeTemporada(temporada.id);
-  const nombres = new Map(repo.jugadores().map((j) => [j.id, j.nombre]));
+  const [ranking, jugadores, torneos] = await Promise.all([
+    repo.rankingDeTemporada(temporada.id),
+    repo.jugadores(),
+    repo.torneos({ temporadaId: temporada.id }),
+  ]);
+  const nombres = new Map(jugadores.map((j) => [j.id, j.nombre]));
 
   const filas = ranking
     .map(
@@ -33,8 +41,7 @@ rutasPublicas.get("/publico/ranking", (_req, res) => {
     )
     .join("");
 
-  const proximos = repo
-    .torneos({ temporadaId: temporada.id })
+  const proximos = torneos
     .filter((t) => ["inscripcion", "en_juego"].includes(t.estado))
     .map(
       (t) => `<tr>
@@ -68,6 +75,21 @@ rutasPublicas.get("/publico/ranking", (_req, res) => {
   );
 });
 
-rutasPublicas.get("/salud", (_req, res) => {
-  res.json({ ok: true, hora: new Date().toISOString() });
+/**
+ * Chequeo de salud. Toca la base a propósito: si la conexión con Turso está mal,
+ * queremos que este endpoint lo diga en vez de devolver ok sin haber probado nada.
+ */
+rutasPublicas.get("/salud", async (_req, res) => {
+  try {
+    const repo = await abrirRepo();
+    await repo.temporadas();
+    res.json({ ok: true, base: "conectada", hora: new Date().toISOString() });
+  } catch (error) {
+    res.status(503).json({
+      ok: false,
+      base: "sin conexión",
+      detalle: error instanceof Error ? error.message : String(error),
+      hora: new Date().toISOString(),
+    });
+  }
 });

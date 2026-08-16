@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
 import { config } from "../../config.js";
-import { db, hoyISO } from "../../db/index.js";
-import { Repo } from "../../db/repo.js";
+import { hoyISO } from "../../db/index.js";
+import { abrirRepo } from "../../db/repo.js";
 import { alertaRatioPremios, beneficioModerador, resumirCaja } from "../../domain/caja.js";
 import { aUSD, formatoARS, pesosACentavos } from "../../domain/money.js";
 import { REGLAS_POR_DEFECTO } from "../../domain/ranking.js";
@@ -25,9 +25,9 @@ const esquemaJugador = z.object({
   notas: z.string().max(300).optional(),
 });
 
-rutasGestion.get("/jugadores", (req, res) => {
-  const repo = new Repo(db());
-  const jugadores = repo.jugadores();
+rutasGestion.get("/jugadores", async (req, res) => {
+  const repo = await abrirRepo();
+  const [jugadores, conPase] = await Promise.all([repo.jugadores(), repo.jugadoresConPaseActivo()]);
   const filas = jugadores
     .map(
       (j) => `<tr>
@@ -36,7 +36,7 @@ rutasGestion.get("/jugadores", (req, res) => {
         <td class="mono tenue">${esc(j.riot_id ?? "—")}</td>
         <td class="mono tenue">${esc(j.alias_pago ?? "—")}</td>
         <td>${j.mayor_edad ? '<span class="pill" style="color:var(--ok)">18+</span>' : '<span style="color:var(--alerta)">sin confirmar</span>'}</td>
-        <td>${repo.tienePaseActivo(j.id) ? '<span class="pill">Pase activo</span>' : "—"}</td>
+        <td>${conPase.has(j.id) ? '<span class="pill">Pase activo</span>' : "—"}</td>
         <td>
           <form class="inline" method="post" action="/jugadores/${j.id}/mayoria">
             <input type="hidden" name="valor" value="${j.mayor_edad ? "0" : "1"}">
@@ -79,8 +79,8 @@ rutasGestion.get("/jugadores", (req, res) => {
   );
 });
 
-rutasGestion.post("/jugadores", (req, res) => {
-  const repo = new Repo(db());
+rutasGestion.post("/jugadores", async (req, res) => {
+  const repo = await abrirRepo();
   const parseo = esquemaJugador.safeParse(req.body);
   if (!parseo.success) {
     res.status(400).send(`Datos inválidos: ${parseo.error.issues.map((i) => i.path.join(".")).join(", ")}`);
@@ -88,7 +88,7 @@ rutasGestion.post("/jugadores", (req, res) => {
   }
   const datos = parseo.data;
   try {
-    repo.crearJugador({
+    await repo.crearJugador({
       discord_id: datos.discord_id,
       discord_tag: datos.discord_tag,
       nombre: datos.nombre,
@@ -97,7 +97,7 @@ rutasGestion.post("/jugadores", (req, res) => {
       mayor_edad: datos.mayor_edad === "on",
       notas: datos.notas ?? null,
     });
-    repo.registrar(req.rol ?? "?", "crear_jugador", datos.nombre);
+    await repo.registrar(req.rol ?? "?", "crear_jugador", datos.nombre);
   } catch (error) {
     res.status(400).send(
       layout(
@@ -110,11 +110,11 @@ rutasGestion.post("/jugadores", (req, res) => {
   res.redirect("/jugadores");
 });
 
-rutasGestion.post("/jugadores/:id/mayoria", (req, res) => {
-  const repo = new Repo(db());
-  const jugador = repo.jugador(Number(req.params.id));
+rutasGestion.post("/jugadores/:id/mayoria", async (req, res) => {
+  const repo = await abrirRepo();
+  const jugador = await repo.jugador(Number(req.params.id));
   if (jugador) {
-    repo.actualizarJugador(jugador.id, {
+    await repo.actualizarJugador(jugador.id, {
       discord_tag: jugador.discord_tag,
       nombre: jugador.nombre,
       riot_id: jugador.riot_id,
@@ -123,16 +123,20 @@ rutasGestion.post("/jugadores/:id/mayoria", (req, res) => {
       baneado: jugador.baneado === 1,
       notas: jugador.notas,
     });
-    repo.registrar(req.rol ?? "?", "cambiar_mayoria_edad", `${jugador.nombre} a ${req.body?.valor}`);
+    await repo.registrar(
+      req.rol ?? "?",
+      "cambiar_mayoria_edad",
+      `${jugador.nombre} a ${req.body?.valor}`,
+    );
   }
   res.redirect("/jugadores");
 });
 
-rutasGestion.post("/jugadores/:id/baneo", (req, res) => {
-  const repo = new Repo(db());
-  const jugador = repo.jugador(Number(req.params.id));
+rutasGestion.post("/jugadores/:id/baneo", async (req, res) => {
+  const repo = await abrirRepo();
+  const jugador = await repo.jugador(Number(req.params.id));
   if (jugador) {
-    repo.actualizarJugador(jugador.id, {
+    await repo.actualizarJugador(jugador.id, {
       discord_tag: jugador.discord_tag,
       nombre: jugador.nombre,
       riot_id: jugador.riot_id,
@@ -147,25 +151,32 @@ rutasGestion.post("/jugadores/:id/baneo", (req, res) => {
 
 // ---------------- temporadas ----------------
 
-rutasGestion.get("/temporadas", (req, res) => {
-  const repo = new Repo(db());
-  const temporadas = repo.temporadas();
+rutasGestion.get("/temporadas", async (req, res) => {
+  const repo = await abrirRepo();
+  const temporadas = await repo.temporadas();
+  const cantidadTorneos = new Map(
+    await Promise.all(
+      temporadas.map(
+        async (t) =>
+          [t.id, (await repo.torneos({ temporadaId: t.id })).length] as [number, number],
+      ),
+    ),
+  );
   const filas = temporadas
-    .map((t) => {
-      const torneos = repo.torneos({ temporadaId: t.id });
-      return `<tr>
+    .map(
+      (t) => `<tr>
         <td>${esc(t.nombre)}</td>
         <td class="mono">${esc(t.desde_fecha)} a ${esc(t.hasta_fecha)}</td>
         <td>${esc(t.estado)}</td>
-        <td>${torneos.length}</td>
+        <td>${cantidadTorneos.get(t.id) ?? 0}</td>
         <td>${formatoARS(t.premio_final_centavos)}</td>
         <td>${
           t.estado === "activa" && req.rol === "admin"
             ? `<form class="inline" method="post" action="/temporadas/${t.id}/cerrar" onsubmit="return confirm('Cerrar la temporada congela el ranking. ¿Seguir?')"><button class="secundario chico">Cerrar</button></form>`
             : ""
         }</td>
-      </tr>`;
-    })
+      </tr>`,
+    )
     .join("");
 
   res.send(
@@ -202,14 +213,14 @@ rutasGestion.get("/temporadas", (req, res) => {
   );
 });
 
-rutasGestion.post("/temporadas", requiereAdmin, (req, res) => {
-  const repo = new Repo(db());
+rutasGestion.post("/temporadas", requiereAdmin, async (req, res) => {
+  const repo = await abrirRepo();
   const nombre = String(req.body?.nombre ?? "").trim();
   if (nombre.length < 3) {
     res.status(400).send("Nombre demasiado corto");
     return;
   }
-  const id = repo.crearTemporada({
+  const id = await repo.crearTemporada({
     nombre,
     desde_fecha: String(req.body?.desde_fecha ?? hoyISO()),
     hasta_fecha: String(req.body?.hasta_fecha ?? hoyISO()),
@@ -225,32 +236,41 @@ rutasGestion.post("/temporadas", requiereAdmin, (req, res) => {
       },
     },
   });
-  repo.registrar(req.rol ?? "?", "crear_temporada", `${nombre} (#${id})`);
+  await repo.registrar(req.rol ?? "?", "crear_temporada", `${nombre} (#${id})`);
   res.redirect("/temporadas");
 });
 
-rutasGestion.post("/temporadas/:id/cerrar", requiereAdmin, (req, res) => {
-  const repo = new Repo(db());
-  repo.cerrarTemporada(Number(req.params.id));
-  repo.registrar(req.rol ?? "?", "cerrar_temporada", `#${req.params.id}`);
+rutasGestion.post("/temporadas/:id/cerrar", requiereAdmin, async (req, res) => {
+  const repo = await abrirRepo();
+  await repo.cerrarTemporada(Number(req.params.id));
+  await repo.registrar(req.rol ?? "?", "cerrar_temporada", `#${req.params.id}`);
   res.redirect("/temporadas");
 });
 
 // ---------------- ranking ----------------
 
-rutasGestion.get("/ranking", (req, res) => {
-  const repo = new Repo(db());
-  const temporadas = repo.temporadas();
-  const temporadaId = Number(req.query.temporada) || repo.temporadaActiva()?.id || temporadas[0]?.id;
-  const temporada = temporadaId ? repo.temporada(temporadaId) : undefined;
+rutasGestion.get("/ranking", async (req, res) => {
+  const repo = await abrirRepo();
+  const [temporadas, activa] = await Promise.all([repo.temporadas(), repo.temporadaActiva()]);
+  const temporadaId = Number(req.query.temporada) || activa?.id || temporadas[0]?.id;
+  const temporada = temporadaId ? temporadas.find((t) => t.id === temporadaId) : undefined;
 
   if (!temporada) {
-    res.send(layout(`<h1>Ranking</h1>${alerta("atencion", "No hay temporadas creadas.")}`, { titulo: "Ranking", rol: req.rol, activo: "ranking" }));
+    res.send(
+      layout(`<h1>Ranking</h1>${alerta("atencion", "No hay temporadas creadas.")}`, {
+        titulo: "Ranking",
+        rol: req.rol,
+        activo: "ranking",
+      }),
+    );
     return;
   }
 
-  const ranking = repo.rankingDeTemporada(temporada.id);
-  const nombres = new Map(repo.jugadores().map((j) => [j.id, j.nombre]));
+  const [ranking, jugadores] = await Promise.all([
+    repo.rankingDeTemporada(temporada.id),
+    repo.jugadores(),
+  ]);
+  const nombres = new Map(jugadores.map((j) => [j.id, j.nombre]));
   const filas = ranking
     .map(
       (f, i) => `<tr>
@@ -291,14 +311,23 @@ rutasGestion.get("/ranking", (req, res) => {
 
 // ---------------- pases ----------------
 
-rutasGestion.get("/pases", (req, res) => {
-  const repo = new Repo(db());
-  const temporada = repo.temporadaActiva();
+rutasGestion.get("/pases", async (req, res) => {
+  const repo = await abrirRepo();
+  const temporada = await repo.temporadaActiva();
   if (!temporada) {
-    res.send(layout(`<h1>Pases</h1>${alerta("atencion", "Creá una temporada activa primero.")}`, { titulo: "Pases", rol: req.rol, activo: "pases" }));
+    res.send(
+      layout(`<h1>Pases</h1>${alerta("atencion", "Creá una temporada activa primero.")}`, {
+        titulo: "Pases",
+        rol: req.rol,
+        activo: "pases",
+      }),
+    );
     return;
   }
-  const pases = repo.pasesDeTemporada(temporada.id);
+  const [pases, jugadoresTodos] = await Promise.all([
+    repo.pasesDeTemporada(temporada.id),
+    repo.jugadores(),
+  ]);
   const hoy = hoyISO();
   const filas = pases
     .map(
@@ -312,8 +341,7 @@ rutasGestion.get("/pases", (req, res) => {
     )
     .join("");
 
-  const jugadores = repo
-    .jugadores()
+  const jugadores = jugadoresTodos
     .filter((j) => j.baneado !== 1)
     .map((j) => `<option value="${j.id}">${esc(j.nombre)}${j.mayor_edad ? "" : " (sin 18+)"}</option>`)
     .join("");
@@ -363,20 +391,20 @@ rutasGestion.get("/pases", (req, res) => {
   );
 });
 
-rutasGestion.post("/pases", (req, res) => {
-  const repo = new Repo(db());
-  const temporada = repo.temporadaActiva();
+rutasGestion.post("/pases", async (req, res) => {
+  const repo = await abrirRepo();
+  const temporada = await repo.temporadaActiva();
   if (!temporada) {
     res.status(400).send("Sin temporada activa");
     return;
   }
   const jugadorId = Number(req.body?.jugador_id);
-  const jugador = repo.jugador(jugadorId);
+  const jugador = await repo.jugador(jugadorId);
   if (!jugador) {
     res.status(400).send("Jugador inexistente");
     return;
   }
-  repo.crearPase({
+  await repo.crearPase({
     jugador_id: jugadorId,
     temporada_id: temporada.id,
     nivel: String(req.body?.nivel ?? "combatiente"),
@@ -386,19 +414,20 @@ rutasGestion.post("/pases", (req, res) => {
     medio_pago: String(req.body?.medio_pago ?? "") || null,
     referencia_pago: String(req.body?.referencia_pago ?? "") || null,
   });
-  repo.registrar(req.rol ?? "?", "crear_pase", `${jugador.nombre}`);
+  await repo.registrar(req.rol ?? "?", "crear_pase", `${jugador.nombre}`);
   res.redirect("/pases");
 });
 
 // ---------------- caja ----------------
 
-rutasGestion.get("/caja", (req, res) => {
-  const repo = new Repo(db());
+rutasGestion.get("/caja", async (req, res) => {
+  const repo = await abrirRepo();
   const hoy = hoyISO();
-  const desde = typeof req.query.desde === "string" && req.query.desde ? req.query.desde : `${hoy.slice(0, 7)}-01`;
+  const desde =
+    typeof req.query.desde === "string" && req.query.desde ? req.query.desde : `${hoy.slice(0, 7)}-01`;
   const hasta = typeof req.query.hasta === "string" && req.query.hasta ? req.query.hasta : hoy;
 
-  const movimientos = repo.movimientos({ desde, hasta });
+  const movimientos = await repo.movimientos({ desde, hasta });
   const resumen = resumirCaja(movimientos);
   const beneficio = beneficioModerador(resumen, config.porcentajeMod);
   const alertaRatio = alertaRatioPremios(resumen);
@@ -492,10 +521,10 @@ rutasGestion.get("/caja", (req, res) => {
   );
 });
 
-rutasGestion.post("/caja", (req, res) => {
-  const repo = new Repo(db());
+rutasGestion.post("/caja", async (req, res) => {
+  const repo = await abrirRepo();
   const tipo = req.body?.tipo === "egreso" ? "egreso" : "ingreso";
-  repo.crearMovimiento({
+  await repo.crearMovimiento({
     fecha: String(req.body?.fecha ?? hoyISO()),
     tipo,
     categoria: String(req.body?.categoria ?? "otro"),
@@ -505,13 +534,13 @@ rutasGestion.post("/caja", (req, res) => {
     referencia: String(req.body?.referencia ?? "") || null,
     creado_por: req.rol ?? "?",
   });
-  repo.registrar(req.rol ?? "?", "cargar_movimiento", `${tipo} ${req.body?.categoria}`);
+  await repo.registrar(req.rol ?? "?", "cargar_movimiento", `${tipo} ${req.body?.categoria}`);
   res.redirect("/caja");
 });
 
-rutasGestion.post("/caja/:id/borrar", requiereAdmin, (req, res) => {
-  const repo = new Repo(db());
-  repo.borrarMovimiento(Number(req.params.id));
-  repo.registrar(req.rol ?? "?", "borrar_movimiento", `#${req.params.id}`);
+rutasGestion.post("/caja/:id/borrar", requiereAdmin, async (req, res) => {
+  const repo = await abrirRepo();
+  await repo.borrarMovimiento(Number(req.params.id));
+  await repo.registrar(req.rol ?? "?", "borrar_movimiento", `#${req.params.id}`);
   res.redirect("/caja");
 });

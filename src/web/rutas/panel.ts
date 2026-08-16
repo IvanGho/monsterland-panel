@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { config } from "../../config.js";
-import { db, hoyISO } from "../../db/index.js";
-import { Repo } from "../../db/repo.js";
+import { hoyISO } from "../../db/index.js";
+import { abrirRepo, type Participante } from "../../db/repo.js";
 import { alertaRatioPremios, alertasDeTorneo, beneficioModerador, resumirCaja } from "../../domain/caja.js";
 import { aUSD, formatoARS } from "../../domain/money.js";
 import { claveCoincide, limpiarCookieSesion, requiereLogin, setCookieSesion } from "../auth.js";
@@ -56,21 +56,33 @@ rutasPanel.get("/salir", (_req, res) => {
   res.redirect("/login");
 });
 
-rutasPanel.get("/", requiereLogin, (req, res) => {
-  const repo = new Repo(db());
-  const temporada = repo.temporadaActiva();
+rutasPanel.get("/", requiereLogin, async (req, res) => {
+  const repo = await abrirRepo();
+  const temporada = await repo.temporadaActiva();
   const hoy = hoyISO();
   const inicioMes = `${hoy.slice(0, 7)}-01`;
 
-  const movimientosMes = repo.movimientos({ desde: inicioMes, hasta: hoy });
+  const [movimientosMes, jugadores] = await Promise.all([
+    repo.movimientos({ desde: inicioMes, hasta: hoy }),
+    repo.jugadores(),
+  ]);
   const resumen = resumirCaja(movimientosMes);
   const beneficio = beneficioModerador(resumen, config.porcentajeMod);
 
   const torneosAbiertos = temporada
-    ? repo.torneos({ temporadaId: temporada.id }).filter((t) =>
+    ? (await repo.torneos({ temporadaId: temporada.id })).filter((t) =>
         ["borrador", "inscripcion", "en_juego"].includes(t.estado),
       )
     : [];
+
+  // Los inscriptos de cada torneo se usan dos veces (alertas y tabla): una sola carga.
+  const participantesPorTorneo = new Map<number, Participante[]>(
+    await Promise.all(
+      torneosAbiertos.map(
+        async (t) => [t.id, await repo.participantes(t.id)] as [number, Participante[]],
+      ),
+    ),
+  );
 
   const alertas: string[] = [];
   const alertaRatio = alertaRatioPremios(resumen);
@@ -85,7 +97,7 @@ rutasPanel.get("/", requiereLogin, (req, res) => {
   }
 
   for (const torneo of torneosAbiertos) {
-    const participantes = repo.participantes(torneo.id);
+    const participantes = participantesPorTorneo.get(torneo.id) ?? [];
     const pagos = participantes.filter((p) => p.pago_ok === 1 || p.cubierto_por_pase === 1).length;
     for (const a of alertasDeTorneo({
       inscripcionCentavos: torneo.inscripcion_centavos,
@@ -101,7 +113,7 @@ rutasPanel.get("/", requiereLogin, (req, res) => {
 
   const filasTorneos = torneosAbiertos
     .map((t) => {
-      const participantes = repo.participantes(t.id);
+      const participantes = participantesPorTorneo.get(t.id) ?? [];
       const presentes = participantes.filter((p) => p.presente === 1).length;
       return `<tr>
         <td><a href="/torneos/${t.id}">${esc(t.nombre)}</a><div class="tenue" style="font-size:12px">${esc(t.juego)} ${esc(t.formato)}</div></td>
@@ -113,8 +125,8 @@ rutasPanel.get("/", requiereLogin, (req, res) => {
     })
     .join("");
 
-  const ranking = temporada ? repo.rankingDeTemporada(temporada.id) : [];
-  const nombres = new Map(repo.jugadores().map((j) => [j.id, j.nombre]));
+  const ranking = temporada ? await repo.rankingDeTemporada(temporada.id) : [];
+  const nombres = new Map(jugadores.map((j) => [j.id, j.nombre]));
   const filasRanking = ranking
     .slice(0, 5)
     .map(

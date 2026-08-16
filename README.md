@@ -26,7 +26,7 @@ Lo usan dos personas: el dueño (rol `admin`) y el moderador de torneos (rol `mo
 |---|---|
 | Node 22 + TypeScript | Un solo lenguaje, sin build de front. Cualquier dev (o cualquier IA) lo puede extender. |
 | Express + HTML renderizado en el servidor | Sin React, sin bundler, sin `node_modules` de 400 MB. Abre rápido incluso desde el celular a las 3 AM. |
-| SQLite (better-sqlite3) | La base es **un archivo**. Backup = copiar el archivo. Para 140 miembros y 8 torneos por mes sobra. |
+| SQLite vía libSQL (`@libsql/client`) | El mismo código habla con **un archivo** local (tu PC) o con una base **Turso** por red (Vercel). Mismo dialecto SQL, así que no hay dos versiones del esquema para mantener. Para 140 miembros y 8 torneos por mes sobra. |
 | Sin login de Discord (OAuth) | Dos usuarios no justifican montar OAuth. Dos claves y listo. Si algún día lo abrís a más mods, ahí sí conviene OAuth. |
 
 ## Cómo verlo funcionando
@@ -69,6 +69,11 @@ cloudflared tunnel --url http://localhost:3000
 Te da una URL pública temporal (`https://algo-random.trycloudflare.com`) que podés pasarle al mod.
 Cuando cerrás la terminal, la URL muere. Ideal para las noches de torneo sin gastar un peso.
 
+### Opción D — Vercel, online 24/7 y gratis
+
+Para que el mod entre cuando quiera sin depender de tu máquina.
+Ver [Desplegar en Vercel](#desplegar-en-vercel) más abajo.
+
 > Los datos de prueba (`npm run seed`) sólo se cargan si la base está vacía: no te van a ensuciar
 > la base real. Para una demo aparte usá `DB_PATH=./data/prueba.db`.
 
@@ -90,31 +95,83 @@ Cuando cerrás la terminal, la URL muere. Ideal para las noches de torneo sin ga
 
 ## Dónde hostearlo
 
-La base es un archivo, así que necesitás un host con **disco persistente**. Vercel y Netlify no sirven para esto (borran el disco en cada deploy).
-
 | Opción | Costo | Detalle |
 |---|---|---|
-| **Tu propia PC** (recomendado para arrancar) | $0 | Levantás el panel cuando organizás. El mod entra por la red local, o abrís un túnel temporal con `cloudflared tunnel --url http://localhost:3000`. Cero costo, cero riesgo, y si se cae no pasa nada porque no hay nada público. |
-| **Fly.io / Railway / Render con volumen** | Desde ~USD 5/mes | Andá por acá cuando el mod necesite entrar sin depender de que vos tengas la máquina prendida. Montá el volumen y apuntá `DB_PATH` ahí (ej. `/data/monsterland.db`). |
+| **Vercel + Turso** (recomendado si el mod tiene que entrar solo) | $0 en los planes gratuitos | El panel queda online 24/7 sin que tengas la PC prendida. Ver los pasos abajo. |
+| **Tu propia PC** | $0 | Levantás el panel cuando organizás. El mod entra por la red local, o abrís un túnel temporal con `cloudflared tunnel --url http://localhost:3000`. Cero costo, cero riesgo, y si se cae no pasa nada porque no hay nada público. |
+| **Fly.io / Railway / Render con volumen** | Desde ~USD 5/mes | Si preferís un server común con disco. Montá el volumen y apuntá `DB_PATH` ahí (ej. `/data/monsterland.db`). |
 | **VPS chico** (Hetzner, Contabo) | ~USD 4-5/mes | Más control, más trabajo de mantenimiento. |
 
-**Backup**: copiá `data/monsterland.db` (y los `.db-wal`/`.db-shm` si existen) a Drive una vez por semana. Es literalmente un `cp`. Sin backup, un disco que se rompe te borra la temporada.
+### Desplegar en Vercel
+
+Vercel corre el panel como una sola función serverless. Eso trae **una** restricción que hay que
+respetar: el disco es descartable, así que la base **no** puede ser un archivo — se borraría en cada
+deploy. Por eso la base va en [Turso](https://turso.tech) (libSQL, que es SQLite del otro lado de la red).
+El panel se niega a arrancar en Vercel si no configuraste la base, así que no hay forma de perder datos por olvido.
+
+**1. Crear la base en Turso** (plan gratuito, sin tarjeta):
+
+```bash
+npm i -g @tursodatabase/turso-cli
+turso auth signup
+turso db create monsterland
+turso db show monsterland --url      # -> TURSO_DATABASE_URL
+turso db tokens create monsterland   # -> TURSO_AUTH_TOKEN
+```
+
+**2. Importar el repo en Vercel** ([vercel.com/new](https://vercel.com/new)). Detecta Express solo:
+no hay que configurar build command ni output directory, y no hace falta `vercel.json`.
+
+**3. Cargar las variables de entorno** en Settings → Environment Variables:
+
+| Variable | Valor |
+|---|---|
+| `TURSO_DATABASE_URL` | lo que devolvió `turso db show --url` |
+| `TURSO_AUTH_TOKEN` | lo que devolvió `turso db tokens create` |
+| `ADMIN_PASSWORD` | tu clave de dueño |
+| `MOD_PASSWORD` | la clave del mod (distinta de la anterior) |
+| `SESSION_SECRET` | 32 bytes al azar: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| `NOMBRE_COMUNIDAD` | opcional |
+| `TIPO_CAMBIO_ARS` | opcional |
+
+**4. Volver a desplegar** (Deployments → ⋯ → Redeploy). Las variables sólo se leen en el arranque:
+si las cargás después del primer deploy, hace falta este paso.
+
+**5. Chequear que quedó bien**: abrí `https://tu-panel.vercel.app/salud`. Tiene que devolver
+`{"ok":true,"base":"conectada"}`. Si devuelve 503, el propio panel te dice qué variable falta.
+
+El esquema de la base se crea solo en el primer arranque: no hay que correr migraciones a mano.
+Para cargar datos de prueba en la base de Turso: `TURSO_DATABASE_URL=... TURSO_AUTH_TOKEN=... npm run seed`.
+
+> **Latencia**: en Vercel cada consulta viaja por red. Elegí la región de Turso más cerca de la de
+> tu proyecto en Vercel (por ejemplo ambas en Brasil o en el este de EE.UU.) o el panel va a andar lento.
+
+**Backup**:
+- Base en archivo: copiá `data/monsterland.db` (y los `.db-wal`/`.db-shm` si existen) a Drive una vez por semana.
+- Base en Turso: `turso db shell monsterland .dump > backup.sql`.
+
+Sin backup, un disco que se rompe o una cuenta que se cierra te borra la temporada.
 
 ## Variables de entorno
 
 Ver `.env.example`. Las tres obligatorias: `ADMIN_PASSWORD`, `MOD_PASSWORD`, `SESSION_SECRET`.
 El panel **se niega a arrancar** si falta alguna o si las dos claves son iguales.
 
+Para la base, una de las dos: `DB_PATH` (archivo local, es el default) o
+`TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` (base por red, obligatorio en Vercel).
+Si están las dos, gana la remota.
+
 ## Estructura
 
 ```
 src/
-  config.ts              variables de entorno y validación
-  server.ts              arranque de Express
+  config.ts              variables de entorno, validación y resolución de la base
+  app.ts                 armado de la app de Express (sin escuchar puerto: lo usa Vercel)
+  server.ts              punto de entrada: exporta la app y levanta el puerto fuera de Vercel
   seed.ts                datos de prueba
   db/
     schema.ts            esquema SQL (inline, para que el build no dependa de copiar archivos)
-    index.ts             conexión + migración automática al arrancar
+    index.ts             conexión libSQL (archivo o Turso) + migración automática al arrancar
     repo.ts              todas las consultas (única capa que habla SQL)
   domain/                lógica pura, sin base ni HTTP: es lo que está testeado
     bracket.ts           llaves, BYEs, propagación de ganadores, puestos
@@ -132,6 +189,15 @@ scripts/smoke.mjs        prueba end-to-end por HTTP
 ```
 
 Regla para extenderlo: **la lógica nueva va en `domain/` con su test**. Las rutas sólo traducen HTTP a llamadas de dominio. Si te encontrás escribiendo reglas de negocio dentro de una ruta, va en el lugar equivocado.
+
+Dos detalles de forma que conviene respetar:
+
+- **Todo lo que toca la base es `async`.** La base puede estar del otro lado de la red, así que
+  `repo.*` devuelve promesas y los handlers son `async`. Express 5 manda los rechazos al middleware
+  de error solo, pero si te olvidás un `await` el bug es silencioso.
+- **Cuidado con el N+1.** Contra un archivo local una consulta por fila no se nota; contra Turso cada
+  una es un viaje de red. Para eso están los helpers que traen todo junto
+  (`jugadoresPorParticipante`, `jugadoresConPaseActivo`).
 
 ## Cosas que faltan (por orden de utilidad)
 

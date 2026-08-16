@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
-import { db, hoyISO } from "../../db/index.js";
-import { Repo, type Torneo } from "../../db/repo.js";
+import { hoyISO } from "../../db/index.js";
+import { abrirRepo } from "../../db/repo.js";
 import { llaveTerminada, nombreDeRonda } from "../../domain/bracket.js";
 import { alertasDeTorneo } from "../../domain/caja.js";
 import { validarInscripcion } from "../../domain/elegibilidad.js";
@@ -35,28 +35,31 @@ const esquemaTorneo = z.object({
   siembra: z.enum(["sorteo", "ranking", "manual"]),
 });
 
-function nombresDeParticipantes(repo: Repo, torneoId: number): Map<number, string> {
-  return new Map(repo.participantes(torneoId).map((p) => [p.id, p.nombre]));
-}
+rutasTorneos.get("/", async (req, res) => {
+  const repo = await abrirRepo();
+  const temporada = await repo.temporadaActiva();
+  const torneos = await repo.torneos(temporada ? { temporadaId: temporada.id } : undefined);
 
-rutasTorneos.get("/", (req, res) => {
-  const repo = new Repo(db());
-  const temporada = repo.temporadaActiva();
-  const torneos = repo.torneos(temporada ? { temporadaId: temporada.id } : undefined);
+  const cantidades = new Map(
+    await Promise.all(
+      torneos.map(
+        async (t) => [t.id, (await repo.participantes(t.id)).length] as [number, number],
+      ),
+    ),
+  );
 
   const filas = torneos
-    .map((t) => {
-      const participantes = repo.participantes(t.id);
-      return `<tr>
+    .map(
+      (t) => `<tr>
         <td><a href="/torneos/${t.id}">${esc(t.nombre)}</a></td>
         <td>${esc(t.juego)} ${esc(t.formato)}</td>
         <td class="mono">${esc(t.empieza_en.replace("T", " "))}</td>
-        <td>${participantes.length}/${t.cupo}</td>
+        <td>${cantidades.get(t.id) ?? 0}/${t.cupo}</td>
         <td>${formatoARS(t.inscripcion_centavos)}</td>
         <td>${formatoARS(t.premio_centavos)}</td>
         <td>${etiquetaEstado(t.estado)}</td>
-      </tr>`;
-    })
+      </tr>`,
+    )
     .join("");
 
   res.send(
@@ -76,9 +79,9 @@ rutasTorneos.get("/", (req, res) => {
   );
 });
 
-rutasTorneos.get("/nuevo", (req, res) => {
-  const repo = new Repo(db());
-  const temporada = repo.temporadaActiva();
+rutasTorneos.get("/nuevo", async (req, res) => {
+  const repo = await abrirRepo();
+  const temporada = await repo.temporadaActiva();
   if (!temporada) {
     res.send(
       layout(
@@ -126,20 +129,24 @@ rutasTorneos.get("/nuevo", (req, res) => {
   );
 });
 
-rutasTorneos.post("/", (req, res) => {
-  const repo = new Repo(db());
-  const temporada = repo.temporadaActiva();
+rutasTorneos.post("/", async (req, res) => {
+  const repo = await abrirRepo();
+  const temporada = await repo.temporadaActiva();
   if (!temporada) {
     res.status(400).send("No hay temporada activa.");
     return;
   }
   const parseo = esquemaTorneo.safeParse(req.body);
   if (!parseo.success) {
-    res.status(400).send(`Datos inválidos: ${parseo.error.issues.map((i) => i.path.join(".") + " " + i.message).join(", ")}`);
+    res
+      .status(400)
+      .send(
+        `Datos inválidos: ${parseo.error.issues.map((i) => i.path.join(".") + " " + i.message).join(", ")}`,
+      );
     return;
   }
   const datos = parseo.data;
-  const id = repo.crearTorneo({
+  const id = await repo.crearTorneo({
     temporada_id: temporada.id,
     nombre: datos.nombre,
     juego: datos.juego,
@@ -155,12 +162,12 @@ rutasTorneos.post("/", (req, res) => {
     best_of_final: datos.best_of_final,
     siembra: datos.siembra,
   });
-  repo.registrar(req.rol ?? "?", "crear_torneo", `${datos.nombre} (#${id})`);
+  await repo.registrar(req.rol ?? "?", "crear_torneo", `${datos.nombre} (#${id})`);
   res.redirect(`/torneos/${id}`);
 });
 
-rutasTorneos.post("/:id/estado", (req, res) => {
-  const repo = new Repo(db());
+rutasTorneos.post("/:id/estado", async (req, res) => {
+  const repo = await abrirRepo();
   const id = Number(req.params.id);
   const estado = String(req.body?.estado ?? "");
   const permitidos = ["borrador", "inscripcion", "en_juego", "finalizado", "cancelado"];
@@ -168,21 +175,23 @@ rutasTorneos.post("/:id/estado", (req, res) => {
     res.status(400).send("Estado inválido");
     return;
   }
-  repo.cambiarEstadoTorneo(id, estado);
-  repo.registrar(req.rol ?? "?", "cambiar_estado_torneo", `#${id} → ${estado}`);
+  await repo.cambiarEstadoTorneo(id, estado);
+  await repo.registrar(req.rol ?? "?", "cambiar_estado_torneo", `#${id} → ${estado}`);
   res.redirect(`/torneos/${id}`);
 });
 
-rutasTorneos.post("/:id/inscribir", (req, res) => {
-  const repo = new Repo(db());
+rutasTorneos.post("/:id/inscribir", async (req, res) => {
+  const repo = await abrirRepo();
   const torneoId = Number(req.params.id);
-  const torneo = repo.torneo(torneoId);
+  const torneo = await repo.torneo(torneoId);
   if (!torneo) {
     res.status(404).send("Torneo inexistente");
     return;
   }
 
-  const jugadorIds = (Array.isArray(req.body?.jugador_id) ? req.body.jugador_id : [req.body?.jugador_id])
+  const jugadorIds: number[] = (
+    Array.isArray(req.body?.jugador_id) ? req.body.jugador_id : [req.body?.jugador_id]
+  )
     .filter(Boolean)
     .map((v: unknown) => Number(v))
     .filter((n: number) => Number.isInteger(n) && n > 0);
@@ -192,20 +201,31 @@ rutasTorneos.post("/:id/inscribir", (req, res) => {
     return;
   }
 
-  const participantesActuales = repo.participantes(torneoId);
+  const [participantesActuales, todosLosJugadores, conPase] = await Promise.all([
+    repo.participantes(torneoId),
+    repo.jugadores(),
+    repo.jugadoresConPaseActivo(),
+  ]);
+  const jugadoresPorId = new Map(todosLosJugadores.map((j) => [j.id, j]));
+
   const motivos: string[] = [];
   let algunoConPase = false;
 
   for (const jugadorId of jugadorIds) {
-    const jugador = repo.jugador(jugadorId);
+    const jugador = jugadoresPorId.get(jugadorId);
     if (!jugador) {
       motivos.push(`Jugador ${jugadorId} inexistente`);
       continue;
     }
-    const tienePase = repo.tienePaseActivo(jugadorId);
+    const tienePase = conPase.has(jugadorId);
     if (tienePase) algunoConPase = true;
     const veredicto = validarInscripcion(
-      { id: jugador.id, nombre: jugador.nombre, mayorEdad: jugador.mayor_edad === 1, baneado: jugador.baneado === 1 },
+      {
+        id: jugador.id,
+        nombre: jugador.nombre,
+        mayorEdad: jugador.mayor_edad === 1,
+        baneado: jugador.baneado === 1,
+      },
       {
         inscripcionCentavos: torneo.inscripcion_centavos,
         premioCentavos: torneo.premio_centavos,
@@ -233,10 +253,10 @@ rutasTorneos.post("/:id/inscribir", (req, res) => {
     return;
   }
 
-  const nombres = jugadorIds.map((id: number) => repo.jugador(id)?.nombre ?? "?");
+  const nombres = jugadorIds.map((id) => jugadoresPorId.get(id)?.nombre ?? "?");
   const nombreEquipo = String(req.body?.nombre_equipo ?? "").trim() || nombres.join(" + ");
 
-  repo.inscribir({
+  await repo.inscribir({
     torneo_id: torneoId,
     nombre: nombreEquipo,
     jugadorIds,
@@ -246,55 +266,54 @@ rutasTorneos.post("/:id/inscribir", (req, res) => {
     referencia_pago: String(req.body?.referencia_pago ?? "") || null,
     inscripcion_centavos: torneo.inscripcion_centavos,
   });
-  repo.registrar(req.rol ?? "?", "inscribir", `${nombreEquipo} en #${torneoId}`);
+  await repo.registrar(req.rol ?? "?", "inscribir", `${nombreEquipo} en #${torneoId}`);
   res.redirect(`/torneos/${torneoId}`);
 });
 
-rutasTorneos.post("/:id/participante/:pid/pago", (req, res) => {
-  const repo = new Repo(db());
-  repo.marcarPago(
+rutasTorneos.post("/:id/participante/:pid/pago", async (req, res) => {
+  const repo = await abrirRepo();
+  await repo.marcarPago(
     Number(req.params.pid),
     req.body?.pago === "1",
     String(req.body?.medio_pago ?? "") || undefined,
     String(req.body?.referencia ?? "") || undefined,
   );
-  repo.registrar(req.rol ?? "?", "marcar_pago", `participante ${req.params.pid}`);
+  await repo.registrar(req.rol ?? "?", "marcar_pago", `participante ${req.params.pid}`);
   res.redirect(`/torneos/${req.params.id}`);
 });
 
-rutasTorneos.post("/:id/participante/:pid/checkin", (req, res) => {
-  const repo = new Repo(db());
-  repo.marcarPresente(Number(req.params.pid), req.body?.presente === "1");
+rutasTorneos.post("/:id/participante/:pid/checkin", async (req, res) => {
+  const repo = await abrirRepo();
+  await repo.marcarPresente(Number(req.params.pid), req.body?.presente === "1");
   res.redirect(`/torneos/${req.params.id}`);
 });
 
-rutasTorneos.post("/:id/participante/:pid/borrar", (req, res) => {
-  const repo = new Repo(db());
-  repo.eliminarParticipante(Number(req.params.pid));
-  repo.registrar(req.rol ?? "?", "borrar_participante", `participante ${req.params.pid}`);
+rutasTorneos.post("/:id/participante/:pid/borrar", async (req, res) => {
+  const repo = await abrirRepo();
+  await repo.eliminarParticipante(Number(req.params.pid));
+  await repo.registrar(req.rol ?? "?", "borrar_participante", `participante ${req.params.pid}`);
   res.redirect(`/torneos/${req.params.id}`);
 });
 
-rutasTorneos.post("/:id/llave", (req, res) => {
-  const repo = new Repo(db());
+rutasTorneos.post("/:id/llave", async (req, res) => {
+  const repo = await abrirRepo();
   const torneoId = Number(req.params.id);
-  const resultado = repo.generarLlave(torneoId);
+  const resultado = await repo.generarLlave(torneoId);
   if (!resultado.ok) {
     res.status(400).send(
-      layout(`<h1>No se pudo armar la llave</h1>${alerta("grave", resultado.error ?? "")}<p><a class="boton secundario" href="/torneos/${torneoId}">Volver</a></p>`, {
-        titulo: "Error",
-        rol: req.rol,
-        activo: "torneos",
-      }),
+      layout(
+        `<h1>No se pudo armar la llave</h1>${alerta("grave", resultado.error ?? "")}<p><a class="boton secundario" href="/torneos/${torneoId}">Volver</a></p>`,
+        { titulo: "Error", rol: req.rol, activo: "torneos" },
+      ),
     );
     return;
   }
-  repo.registrar(req.rol ?? "?", "generar_llave", `#${torneoId}`);
+  await repo.registrar(req.rol ?? "?", "generar_llave", `#${torneoId}`);
   res.redirect(`/torneos/${torneoId}`);
 });
 
-rutasTorneos.post("/:id/resultado", (req, res) => {
-  const repo = new Repo(db());
+rutasTorneos.post("/:id/resultado", async (req, res) => {
+  const repo = await abrirRepo();
   const torneoId = Number(req.params.id);
   const ronda = Number(req.body?.ronda);
   const posicion = Number(req.body?.posicion);
@@ -303,35 +322,42 @@ rutasTorneos.post("/:id/resultado", (req, res) => {
   const scoreB = Number(req.body?.score_b ?? 0);
   const walkover = req.body?.walkover === "on";
 
-  const resultado = repo.cargarResultadoPartido(torneoId, ronda, posicion, ganadorId, scoreA, scoreB, walkover);
+  const resultado = await repo.cargarResultadoPartido(
+    torneoId,
+    ronda,
+    posicion,
+    ganadorId,
+    scoreA,
+    scoreB,
+    walkover,
+  );
   if (!resultado.ok) {
     res.status(400).send(
-      layout(`<h1>Resultado rechazado</h1>${alerta("grave", resultado.error ?? "")}<p><a class="boton secundario" href="/torneos/${torneoId}">Volver</a></p>`, {
-        titulo: "Error",
-        rol: req.rol,
-        activo: "torneos",
-      }),
+      layout(
+        `<h1>Resultado rechazado</h1>${alerta("grave", resultado.error ?? "")}<p><a class="boton secundario" href="/torneos/${torneoId}">Volver</a></p>`,
+        { titulo: "Error", rol: req.rol, activo: "torneos" },
+      ),
     );
     return;
   }
-  repo.registrar(req.rol ?? "?", "cargar_resultado", `#${torneoId} R${ronda}P${posicion}`);
+  await repo.registrar(req.rol ?? "?", "cargar_resultado", `#${torneoId} R${ronda}P${posicion}`);
   res.redirect(`/torneos/${torneoId}`);
 });
 
-rutasTorneos.post("/:id/pagar-premio", requiereAdmin, (req, res) => {
-  const repo = new Repo(db());
+rutasTorneos.post("/:id/pagar-premio", requiereAdmin, async (req, res) => {
+  const repo = await abrirRepo();
   const torneoId = Number(req.params.id);
-  const torneo = repo.torneo(torneoId);
+  const torneo = await repo.torneo(torneoId);
   if (!torneo) {
     res.status(404).send("Torneo inexistente");
     return;
   }
-  if (repo.premioPagado(torneoId)) {
+  if (await repo.premioPagado(torneoId)) {
     res.status(400).send("El premio de este torneo ya figura pagado en la caja.");
     return;
   }
   const jugadorId = Number(req.body?.jugador_id) || null;
-  repo.crearMovimiento({
+  await repo.crearMovimiento({
     fecha: hoyISO(),
     tipo: "egreso",
     categoria: "premio",
@@ -343,25 +369,33 @@ rutasTorneos.post("/:id/pagar-premio", requiereAdmin, (req, res) => {
     referencia: String(req.body?.referencia ?? "") || null,
     creado_por: req.rol ?? "admin",
   });
-  repo.registrar(req.rol ?? "?", "pagar_premio", `#${torneoId}`);
+  await repo.registrar(req.rol ?? "?", "pagar_premio", `#${torneoId}`);
   res.redirect(`/torneos/${torneoId}`);
 });
 
-rutasTorneos.get("/:id", (req, res) => {
-  const repo = new Repo(db());
+rutasTorneos.get("/:id", async (req, res) => {
+  const repo = await abrirRepo();
   const torneoId = Number(req.params.id);
-  const torneo = repo.torneo(torneoId);
+  const torneo = await repo.torneo(torneoId);
   if (!torneo) {
     res.status(404).send("Torneo inexistente");
     return;
   }
 
-  const participantes = repo.participantes(torneoId);
-  const jugadores = repo.jugadores();
-  const nombrePor = nombresDeParticipantes(repo, torneoId);
-  const llave = repo.llaveNormalizada(torneoId);
+  // Todo lo que hace falta para la ficha, en paralelo y sin una consulta por fila.
+  const [participantes, jugadores, llave, puestos, jugadoresPorParticipante, conPase, premioYaPagado] =
+    await Promise.all([
+      repo.participantes(torneoId),
+      repo.jugadores(),
+      repo.llaveNormalizada(torneoId),
+      repo.puestosDeTorneo(torneoId),
+      repo.jugadoresPorParticipante(torneoId),
+      repo.jugadoresConPaseActivo(),
+      repo.premioPagado(torneoId),
+    ]);
+
+  const nombrePor = new Map(participantes.map((p) => [p.id, p.nombre]));
   const rondas = llave.length ? Math.max(...llave.map((p) => p.ronda)) : 0;
-  const puestos = repo.puestosDeTorneo(torneoId);
   const pagos = participantes.filter((p) => p.pago_ok === 1 || p.cubierto_por_pase === 1).length;
 
   const alertas = alertasDeTorneo({
@@ -377,7 +411,7 @@ rutasTorneos.get("/:id", (req, res) => {
 
   const filasParticipantes = participantes
     .map((p) => {
-      const jugadoresDe = repo.jugadoresDeParticipante(p.id);
+      const jugadoresDe = jugadoresPorParticipante.get(p.id) ?? [];
       const sinMayoria = jugadoresDe.some((j) => j.mayor_edad !== 1);
       return `<tr>
         <td>${esc(p.nombre)}
@@ -449,13 +483,10 @@ rutasTorneos.get("/:id", (req, res) => {
     .filter((j) => j.baneado !== 1)
     .map(
       (j) =>
-        `<option value="${j.id}">${esc(j.nombre)}${j.mayor_edad === 1 ? "" : " (sin 18+)"}${repo.tienePaseActivo(j.id) ? " · PASE" : ""}</option>`,
+        `<option value="${j.id}">${esc(j.nombre)}${j.mayor_edad === 1 ? "" : " (sin 18+)"}${conPase.has(j.id) ? " · PASE" : ""}</option>`,
     )
     .join("");
 
-  const jugadoresPorParticipante = new Map(
-    participantes.map((p) => [p.id, repo.jugadoresDeParticipante(p.id)]),
-  );
   const campeon = puestos.find((p) => p.puesto === 1);
   const jugadorCampeon = campeon ? jugadoresPorParticipante.get(campeon.participanteId)?.[0] : undefined;
 
@@ -468,20 +499,22 @@ rutasTorneos.get("/:id", (req, res) => {
   if (llave.length > 0) textos.push({ titulo: "Llave", texto: anuncioDeLlave(torneo, llave, nombrePor) });
   if (llaveTerminada(llave)) {
     textos.push({ titulo: "Resultado final", texto: anuncioDeResultado(torneo, puestos, nombrePor) });
-    const temporada = repo.temporada(torneo.temporada_id);
+    const temporada = await repo.temporada(torneo.temporada_id);
     if (temporada) {
       const nombresJugadores = new Map(jugadores.map((j) => [j.id, j.nombre]));
       textos.push({
         titulo: "Ranking actualizado",
-        texto: anuncioDeRanking(temporada.nombre, repo.rankingDeTemporada(temporada.id), nombresJugadores),
+        texto: anuncioDeRanking(
+          temporada.nombre,
+          await repo.rankingDeTemporada(temporada.id),
+          nombresJugadores,
+        ),
       });
     }
   }
 
   const bloquesTexto = textos
-    .map(
-      (t) => `<h3>${esc(t.titulo)}</h3><pre class="copiable">${esc(t.texto)}</pre>`,
-    )
+    .map((t) => `<h3>${esc(t.titulo)}</h3><pre class="copiable">${esc(t.texto)}</pre>`)
     .join("");
 
   const contenido = `
@@ -566,7 +599,7 @@ rutasTorneos.get("/:id", (req, res) => {
             </tbody></table>
             ${
               torneo.premio_centavos > 0
-                ? repo.premioPagado(torneoId)
+                ? premioYaPagado
                   ? `<p class="tenue" style="margin-top:10px">Premio ya registrado como pagado en la caja.</p>`
                   : req.rol === "admin"
                     ? `<form method="post" action="/torneos/${torneoId}/pagar-premio" style="margin-top:14px">
