@@ -1,44 +1,38 @@
-import express from "express";
-import cookieParser from "cookie-parser";
+/**
+ * Punto de entrada.
+ *
+ * Vercel detecta este archivo solo (`src/server.ts` es una de las rutas que busca para
+ * apps de Express) y usa el `export default`. Fuera de Vercel, además levanta el puerto.
+ * Por eso el listen() está condicionado: en serverless no hay puerto que escuchar.
+ */
 import { config, validarConfig } from "./config.js";
+import { crearApp } from "./app.js";
 import { db } from "./db/index.js";
-import { conSesion } from "./web/auth.js";
-import { rutasGestion } from "./web/rutas/gestion.js";
-import { rutasPanel } from "./web/rutas/panel.js";
-import { rutasPublicas } from "./web/rutas/publico.js";
-import { rutasTorneos } from "./web/rutas/torneos.js";
 
-const problemas = validarConfig();
-if (problemas.length > 0) {
-  console.error("No se puede arrancar el panel:\n" + problemas.map((p) => ` - ${p}`).join("\n"));
-  console.error("\nCopiá .env.example a .env y completá los valores.");
-  process.exit(1);
+const app = crearApp();
+
+if (!config.enVercel) {
+  const problemas = validarConfig();
+  if (problemas.length > 0) {
+    console.error("No se puede arrancar el panel:\n" + problemas.map((p) => ` - ${p}`).join("\n"));
+    console.error("\nCopiá .env.example a .env y completá los valores (o corré: npm run preparar).");
+    process.exit(1);
+  }
+
+  // Abrir (y migrar) la base antes de escuchar: mejor fallar acá que en el primer request.
+  db()
+    .then(() => {
+      app.listen(config.puerto, () => {
+        console.log(
+          `Panel de ${config.nombreComunidad} escuchando en http://localhost:${config.puerto}`,
+        );
+        console.log(`Base de datos: ${config.dbEsRemota ? config.urlDB : config.rutaDB}`);
+      });
+    })
+    .catch((error: unknown) => {
+      console.error("No se pudo abrir la base de datos:", error);
+      process.exit(1);
+    });
 }
 
-// Abre (y migra) la base al arrancar: mejor fallar acá que en el primer request.
-db();
-
-const app = express();
-app.disable("x-powered-by");
-app.use(express.urlencoded({ extended: false, limit: "256kb" }));
-app.use(cookieParser());
-app.use(conSesion);
-
-app.use(rutasPublicas);
-app.use(rutasPanel);
-app.use("/torneos", rutasTorneos);
-app.use(rutasGestion);
-
-app.use((req, res) => {
-  res.status(404).send(`No existe esa página. <a href="/">Volver al panel</a>`);
-});
-
-app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error("Error no manejado:", error);
-  res.status(500).send("Se rompió algo del lado del servidor. Mirá los logs.");
-});
-
-app.listen(config.puerto, () => {
-  console.log(`Panel de ${config.nombreComunidad} escuchando en http://localhost:${config.puerto}`);
-  console.log(`Base de datos: ${config.rutaDB}`);
-});
+export default app;

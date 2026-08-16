@@ -6,6 +6,18 @@
  * - Todo el dinero en CENTAVOS enteros.
  * - Fechas de día: TEXT 'YYYY-MM-DD'. Timestamps: TEXT ISO 8601.
  */
+export const TABLAS = [
+  "jugadores",
+  "temporadas",
+  "pases",
+  "torneos",
+  "participantes",
+  "participante_jugadores",
+  "partidos",
+  "movimientos",
+  "auditoria",
+] as const;
+
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS jugadores (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -67,7 +67,10 @@ un torneo reprogramado con aviso no rompe nada, un torneo que arranca tarde y te
 3. **Renovar o dar de baja los pases** que vencieron. Escribirle a cada uno antes de que venza, no después.
 4. **Revisar el ranking** y armar el podio del mes con su rol.
 5. **Reunión de 20 minutos con el admin**: qué formato retuvo más gente, qué torneo no llenó, qué se cambia el mes que viene.
-6. **Backup de la base**: copiar el archivo `data/monsterland.db` a Drive.
+6. **Backup de la base**:
+   - Si el panel corre en tu PC o en un server con disco: copiar el archivo `data/monsterland.db` a Drive.
+   - Si corre en Vercel + Turso: `turso db shell <nombre-de-la-base> .dump > backup-YYYY-MM.sql` y subir ese
+     archivo a Drive. Turso tiene backups automáticos, pero uno propio no depende de que la cuenta siga viva.
 
 ---
 
