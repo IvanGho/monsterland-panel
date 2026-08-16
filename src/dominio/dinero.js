@@ -1,11 +1,12 @@
 /**
  * Todo el dinero del panel se maneja en centavos enteros.
- * Nunca guardes pesos con decimales en la base: los float te van a mentir en la caja.
+ * Nunca guardes pesos con decimales: los float te van a mentir en la caja.
  */
 
-export function pesosACentavos(valor: string | number): number {
+/** Acepta "1.500,50", "$1500", 1500 y devuelve centavos enteros. */
+export function pesosACentavos(valor) {
   if (typeof valor === "number") return Math.round(valor * 100);
-  const limpio = valor
+  const limpio = String(valor ?? "")
     .trim()
     .replace(/\$/g, "")
     .replace(/\s/g, "")
@@ -17,18 +18,18 @@ export function pesosACentavos(valor: string | number): number {
   return Math.round(numero * 100);
 }
 
-export function formatoARS(centavos: number): string {
-  const signo = centavos < 0 ? "-" : "";
-  const abs = Math.abs(centavos);
+export function formatoARS(centavos) {
+  const n = Number(centavos) || 0;
+  const signo = n < 0 ? "-" : "";
+  const abs = Math.abs(n);
   const entero = Math.floor(abs / 100);
   const dec = String(abs % 100).padStart(2, "0");
   const conPuntos = entero.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   return `${signo}$${conPuntos},${dec}`;
 }
 
-/** Convierte a USD sólo para mostrar. El tipo de cambio se configura a mano y se muestra con su fecha. */
-export function aUSD(centavosARS: number, tipoCambio: number): string {
+/** Convierte a USD sólo para mostrar. El tipo de cambio se configura a mano. */
+export function aUSD(centavosARS, tipoCambio) {
   if (!tipoCambio || tipoCambio <= 0) return "s/d";
-  const usd = centavosARS / 100 / tipoCambio;
-  return `US$${usd.toFixed(2)}`;
+  return `US$${(centavosARS / 100 / tipoCambio).toFixed(2)}`;
 }

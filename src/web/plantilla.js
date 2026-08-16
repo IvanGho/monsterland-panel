@@ -1,8 +1,14 @@
+/**
+ * Plantilla HTML y helpers de presentación.
+ *
+ * El CSS va embebido en la respuesta a propósito: son unos pocos KB y así no hay archivos
+ * estáticos que servir, ni pipeline de assets, ni un `express.static` que en Vercel no
+ * funcionaría igual que en local.
+ */
 import { config } from "../config.js";
-import type { Rol } from "./auth.js";
 
 /** Escapa HTML. Todo lo que venga del usuario pasa por acá antes de entrar al template. */
-export function esc(valor: unknown): string {
+export function esc(valor) {
   if (valor === null || valor === undefined) return "";
   return String(valor)
     .replace(/&/g, "&amp;")
@@ -14,30 +20,18 @@ export function esc(valor: unknown): string {
 
 const CSS = `
 :root {
-  --fondo: #0b0a0f;
-  --panel: #14121c;
-  --panel-2: #1b1826;
-  --borde: #2a2438;
-  --texto: #e8e4f0;
-  --tenue: #9a91b0;
-  --acento: #8b2fc9;
-  --acento-2: #c94fd6;
-  --ok: #3ecf8e;
-  --alerta: #e5a13a;
-  --grave: #e5484d;
+  --fondo: #0b0a0f; --panel: #14121c; --panel-2: #1b1826; --borde: #2a2438;
+  --texto: #e8e4f0; --tenue: #9a91b0; --acento: #8b2fc9; --acento-2: #c94fd6;
+  --ok: #3ecf8e; --alerta: #e5a13a; --grave: #e5484d;
 }
 * { box-sizing: border-box; }
-body {
-  margin: 0; background: var(--fondo); color: var(--texto);
-  font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif; font-size: 15px; line-height: 1.5;
-}
+body { margin: 0; background: var(--fondo); color: var(--texto);
+  font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif; font-size: 15px; line-height: 1.5; }
 a { color: var(--acento-2); text-decoration: none; }
 a:hover { text-decoration: underline; }
-header.top {
-  display: flex; align-items: center; gap: 18px; padding: 12px 20px;
+header.top { display: flex; align-items: center; gap: 18px; padding: 12px 20px;
   background: linear-gradient(90deg, #14121c, #1d1430); border-bottom: 1px solid var(--borde);
-  position: sticky; top: 0; z-index: 10;
-}
+  position: sticky; top: 0; z-index: 10; }
 header.top .marca { font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--acento-2); }
 header.top nav { display: flex; gap: 14px; flex-wrap: wrap; }
 header.top nav a { color: var(--tenue); font-size: 14px; }
@@ -50,7 +44,6 @@ h3 { font-size: 15px; margin: 18px 0 8px; }
 p.sub { color: var(--tenue); margin: 0 0 18px; }
 .tarjeta { background: var(--panel); border: 1px solid var(--borde); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
 .grid { display: grid; gap: 14px; }
-.grid.g2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
 .grid.g3 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 .metrica { background: var(--panel-2); border: 1px solid var(--borde); border-radius: 10px; padding: 14px; }
 .metrica .valor { font-size: 24px; font-weight: 700; }
@@ -60,22 +53,20 @@ th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--bor
 th { color: var(--tenue); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
 tr:hover td { background: rgba(139, 47, 201, 0.06); }
 form.inline { display: inline; }
-input, select, textarea {
-  background: var(--panel-2); color: var(--texto); border: 1px solid var(--borde);
-  border-radius: 8px; padding: 8px 10px; font-size: 14px; font-family: inherit; width: 100%;
-}
-label { display: block; font-size: 12px; color: var(--tenue); text-transform: uppercase; letter-spacing: 1px; margin: 10px 0 4px; }
-button, .boton {
-  background: var(--acento); color: #fff; border: 0; border-radius: 8px; padding: 9px 14px;
-  font-size: 14px; font-weight: 600; cursor: pointer; display: inline-block;
-}
+input, select, textarea { background: var(--panel-2); color: var(--texto); border: 1px solid var(--borde);
+  border-radius: 8px; padding: 8px 10px; font-size: 14px; font-family: inherit; width: 100%; }
+label { display: block; font-size: 12px; color: var(--tenue); text-transform: uppercase;
+  letter-spacing: 1px; margin: 10px 0 4px; }
+button, .boton { background: var(--acento); color: #fff; border: 0; border-radius: 8px; padding: 9px 14px;
+  font-size: 14px; font-weight: 600; cursor: pointer; display: inline-block; }
 button:hover, .boton:hover { background: var(--acento-2); text-decoration: none; }
 button.secundario, .boton.secundario { background: var(--panel-2); border: 1px solid var(--borde); color: var(--texto); }
 button.peligro { background: var(--grave); }
 button.chico, .boton.chico { padding: 5px 9px; font-size: 12px; }
 .fila { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
 .fila > div { flex: 1 1 160px; }
-.etiqueta-estado { font-size: 11px; padding: 2px 8px; border-radius: 20px; border: 1px solid var(--borde); text-transform: uppercase; letter-spacing: 1px; }
+.etiqueta-estado { font-size: 11px; padding: 2px 8px; border-radius: 20px; border: 1px solid var(--borde);
+  text-transform: uppercase; letter-spacing: 1px; }
 .estado-borrador { color: var(--tenue); }
 .estado-inscripcion { color: var(--alerta); border-color: var(--alerta); }
 .estado-en_juego { color: var(--acento-2); border-color: var(--acento-2); }
@@ -85,6 +76,9 @@ button.chico, .boton.chico { padding: 5px 9px; font-size: 12px; }
 .alerta.info { border-color: var(--borde); color: var(--tenue); }
 .alerta.atencion { border-color: var(--alerta); color: var(--alerta); }
 .alerta.grave { border-color: var(--grave); color: var(--grave); }
+.cinta-demo { background: #3a2508; border-bottom: 1px solid var(--alerta); color: var(--alerta);
+  padding: 8px 20px; font-size: 13px; text-align: center; }
+.cinta-demo a { color: #ffd591; text-decoration: underline; }
 .llave { display: flex; gap: 26px; overflow-x: auto; padding-bottom: 10px; }
 .ronda { min-width: 230px; }
 .ronda h4 { color: var(--tenue); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 10px; }
@@ -94,23 +88,15 @@ button.chico, .boton.chico { padding: 5px 9px; font-size: 12px; }
 .partido .lado.vacio { color: var(--tenue); font-style: italic; }
 .tenue { color: var(--tenue); }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
-pre.copiable {
-  background: #0d0b13; border: 1px solid var(--borde); border-radius: 8px; padding: 12px;
-  white-space: pre-wrap; font-size: 13px; color: var(--texto);
-}
-.pill { display: inline-block; background: var(--panel-2); border: 1px solid var(--borde); border-radius: 20px; padding: 2px 9px; font-size: 12px; }
+pre.copiable { background: #0d0b13; border: 1px solid var(--borde); border-radius: 8px; padding: 12px;
+  white-space: pre-wrap; font-size: 13px; color: var(--texto); }
+.pill { display: inline-block; background: var(--panel-2); border: 1px solid var(--borde);
+  border-radius: 20px; padding: 2px 9px; font-size: 12px; }
 footer { color: var(--tenue); font-size: 12px; padding: 20px; text-align: center; }
 @media (max-width: 640px) { header.top { flex-wrap: wrap; } main { padding: 16px 12px 40px; } }
 `;
 
-export interface OpcionesLayout {
-  titulo: string;
-  rol?: Rol;
-  activo?: string;
-  publico?: boolean;
-}
-
-const NAV: Array<{ href: string; texto: string; clave: string }> = [
+const NAV = [
   { href: "/", texto: "Hoy", clave: "hoy" },
   { href: "/torneos", texto: "Torneos", clave: "torneos" },
   { href: "/ranking", texto: "Ranking", clave: "ranking" },
@@ -120,7 +106,7 @@ const NAV: Array<{ href: string; texto: string; clave: string }> = [
   { href: "/temporadas", texto: "Temporadas", clave: "temporadas" },
 ];
 
-export function layout(contenido: string, opciones: OpcionesLayout): string {
+export function layout(contenido, opciones = {}) {
   const nav = opciones.publico
     ? ""
     : `<nav>${NAV.map(
@@ -132,17 +118,28 @@ export function layout(contenido: string, opciones: OpcionesLayout): string {
     ? `<span class="rol">vista pública</span>`
     : `<span class="rol">${esc(opciones.rol ?? "")} · <a href="/salir">salir</a></span>`;
 
+  // La cinta de demo va en todas las páginas: es lo único que separa "estoy probando"
+  // de "creí que estaba guardando los datos de la temporada".
+  const cinta = config.modoDemo
+    ? `<div class="cinta-demo">
+        <strong>Modo demo</strong> · los datos se borran solos ·
+        <a href="/configuracion">cómo conectar una base para que queden guardados</a>
+      </div>`
+    : "";
+
   return `<!doctype html>
 <html lang="es-AR">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(opciones.titulo)} · ${esc(config.nombreComunidad)}</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<title>${esc(opciones.titulo ?? "Panel")} · ${esc(config.nombreComunidad)}</title>
 <style>${CSS}</style>
 </head>
 <body>
+${cinta}
 <header class="top">
-  <span class="marca">${esc(config.nombreComunidad)} · Kripta</span>
+  <span class="marca">${esc(config.nombreComunidad)}</span>
   ${nav}
   ${rol}
 </header>
@@ -156,7 +153,7 @@ ${contenido}
 </html>`;
 }
 
-export function metrica(etiqueta: string, valor: string, detalle = ""): string {
+export function metrica(etiqueta, valor, detalle = "") {
   return `<div class="metrica">
     <div class="etiqueta">${esc(etiqueta)}</div>
     <div class="valor">${esc(valor)}</div>
@@ -164,10 +161,10 @@ export function metrica(etiqueta: string, valor: string, detalle = ""): string {
   </div>`;
 }
 
-export function alerta(nivel: "info" | "atencion" | "grave", mensaje: string): string {
-  return `<div class="alerta ${nivel}">${esc(mensaje)}</div>`;
+export function alerta(nivel, mensaje) {
+  return `<div class="alerta ${esc(nivel)}">${esc(mensaje)}</div>`;
 }
 
-export function etiquetaEstado(estado: string): string {
-  return `<span class="etiqueta-estado estado-${esc(estado)}">${esc(estado.replace("_", " "))}</span>`;
+export function etiquetaEstado(estado) {
+  return `<span class="etiqueta-estado estado-${esc(estado)}">${esc(String(estado).replace("_", " "))}</span>`;
 }
