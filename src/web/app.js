@@ -1,11 +1,19 @@
 /**
  * Armado de la app de Express.
  *
- * No hay `listen()` acá: en Vercel nadie escucha un puerto, se exporta el handler
- * (ver api/index.js). El `server.js` de la raíz es el que levanta el puerto en local.
+ * No hay `listen()` acá: el que decide si se escucha un puerto es `server.js`, porque en
+ * Vercel no se escucha ninguno (se exporta el handler).
+ *
+ * `configurar` recibe la instancia de Express en vez de crearla. Eso no es un capricho:
+ * Vercel reconoce los proyectos de Express buscando un archivo de entrada que **importe
+ * el paquete express**, y si no lo encuentra el build falla con "No entrypoint found which
+ * imports express". Recibiendo la instancia por parámetro, el `import express` de server.js
+ * es imprescindible para que el código funcione, y no un import decorativo que alguien
+ * pueda borrar por prolijidad rompiendo el deploy.
  */
 import express from "express";
 import cookieParser from "cookie-parser";
+import path from "node:path";
 import { config } from "../config.js";
 import { conSesion } from "./auth.js";
 import { rutasPublicas } from "./rutas/publico.js";
@@ -14,11 +22,16 @@ import { rutasTorneos } from "./rutas/torneos.js";
 import { rutasGestion } from "./rutas/gestion.js";
 import { paginaConfiguracion } from "./rutas/configuracion.js";
 
-export function crearApp() {
-  const app = express();
+/** Monta todo el panel sobre una app de Express ya creada. */
+export function configurar(app) {
   app.disable("x-powered-by");
   // Detrás del proxy de Vercel: para que req.protocol y req.ip reflejen al cliente real.
   app.set("trust proxy", 1);
+
+  // En Vercel los archivos de `public/` los sirve la CDN antes de llegar hasta acá, así que
+  // esta línea allá no hace nada. Está para que en local se comporte igual y el favicon
+  // no termine redirigiendo al login.
+  app.use(express.static(path.join(import.meta.dirname, "..", "..", "public"), { maxAge: "1h" }));
   app.use(express.urlencoded({ extended: false, limit: "256kb" }));
   app.use(cookieParser());
   app.use(conSesion);
@@ -100,4 +113,9 @@ export function crearApp() {
   });
 
   return app;
+}
+
+/** Atajo para tests y scripts, que no necesitan controlar la instancia de Express. */
+export function crearApp() {
+  return configurar(express());
 }

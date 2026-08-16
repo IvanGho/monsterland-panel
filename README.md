@@ -13,7 +13,8 @@ deploy: arranca en modo demo, con datos de ejemplo, y después le conectás una 
 ### Paso 1 — Importar el repo
 
 En [vercel.com/new](https://vercel.com/new) elegí este repositorio y dale **Deploy**.
-No toques nada: ni Framework Preset, ni Build Command, ni Output Directory.
+No toques nada: ni Framework Preset, ni Build Command, ni Output Directory. Vercel reconoce
+solo que es una app de Express y no hace falta ningún `vercel.json`.
 
 Ya debería andar. Entrá a la URL y logueate con la clave **`demo`**.
 
@@ -71,8 +72,11 @@ Cada decisión de acá abajo está para eliminar una forma concreta de fallar en
 |---|---|
 | **Sin paso de build.** JavaScript plano, sin TypeScript ni bundler. | No puede fallar la compilación, porque no hay compilación. `npm install` y listo. |
 | **Sin dependencias nativas.** Sólo `express`, `cookie-parser` y `pg`, las tres JS puro. | Los módulos nativos (como `better-sqlite3`) hay que compilar en el build y ahí es donde suelen romperse. |
-| **`vercel.json` y `api/index.js` explícitos.** | No depende de que Vercel adivine el framework. Cuando esa detección falla, el síntoma es un 404 en todas las páginas, que es dificilísimo de diagnosticar. |
-| **Existe la carpeta `public/`.** | Evita el error "No Output Directory named public found". |
+| **`server.js` importa `express` y hace `export default app`.** | Es exactamente lo que Vercel busca para reconocer un proyecto de Express. Si el archivo de entrada no importa el paquete, el build falla con `No entrypoint found which imports express`. |
+| **La app se arma con `configurar(express())`.** | Así el `import express` del archivo de entrada es imprescindible para que el código funcione, y no un import decorativo que alguien borre por prolijidad rompiendo el deploy. |
+| **`listen()` sólo fuera de Vercel.** | En serverless no hay puerto que escuchar. |
+| **Sin `await` de nivel superior en el archivo de entrada.** | Algunos empaquetadores lo convierten a CommonJS, donde no existe. |
+| **Los estáticos van en `public/`.** | Es de donde Vercel los sirve. `express.static()` allá se ignora. |
 | **Arranca sin ninguna variable de entorno.** | Un deploy nunca queda muerto por una variable que falta: arranca en modo demo y te lo explica en pantalla. |
 | **Nunca hace `process.exit()`.** | Matar el proceso en serverless se ve como un error genérico sin causa. Si falta configuración, responde una página que dice qué falta. |
 | **La base no es un archivo.** | En Vercel el disco es descartable: una base SQLite en archivo se borraría en cada deploy. |
@@ -100,9 +104,8 @@ node scripts/humo.js  # prueba de humo: usa la app entera por HTTP
 ## Cómo está organizado
 
 ```
-api/index.js          entrada de Vercel (exporta la app, no escucha puerto)
-server.js             entrada local (levanta el puerto)
-vercel.json           manda todas las rutas a la función
+server.js             único punto de entrada: Vercel usa su export default,
+                      y en local además levanta el puerto
 public/               archivos estáticos (favicon, robots)
 src/
   config.js           variables de entorno. Nunca tira error ni corta el proceso.
