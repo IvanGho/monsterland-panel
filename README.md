@@ -50,6 +50,26 @@ arrancar, así que si las cargaste después del primer deploy hay que repetirlo.
 
 Listo. Las tablas se crean solas en el primer uso.
 
+### Un solo proyecto de Vercel
+
+Si el repo estuvo conectado a **más de un proyecto** de Vercel, los deploys se pisan entre sí:
+uno queda sirviendo la versión vieja y parece que los cambios "no se toman". Pasó, y es lo
+primero que hay que descartar cuando algo no cuadra.
+
+En [vercel.com/dashboard](https://vercel.com/dashboard), buscá todos los proyectos apuntando a
+`monsterland-panel`:
+
+1. **Dejá uno solo.** En los que sobren: *Settings → General → Delete Project*. Borrar un
+   proyecto de Vercel no toca el repositorio ni la base de datos.
+2. En el que queda: *Settings → Environments → Production*, **Production Branch = `main`**.
+3. *Settings → Environment Variables*: cargá las de la tabla del Paso 3, marcadas para
+   **Production** (y para Preview si querés que los PR también funcionen).
+4. *Deployments → ⋯ → Redeploy* en el último. Las variables se leen al arrancar: si las
+   cargaste después del deploy, hay que repetirlo.
+
+Cómo saber cuál está sirviendo: abrí `/salud` y mirá el campo `modo`. Si dice
+`demo (datos en memoria)` cuando ya configuraste la base, ese deploy no tiene las variables.
+
 ### Si algo no anda
 
 Abrí **`/configuracion`** en tu panel. Esa página dice qué variable falta y qué está bien
@@ -61,6 +81,14 @@ la base de verdad:
 ```
 
 Si `ok` es `false`, el campo `detalle` trae el error exacto de la base.
+
+| Síntoma | Causa más probable |
+|---|---|
+| 404 en todas las páginas | Vercel no reconoció la app. `server.js` tiene que importar `express` y hacer `export default app`: son las dos cosas que busca su detector. |
+| `No entrypoint found which imports express` en el build | Lo mismo de arriba: alguien quitó el `import express` de `server.js`. |
+| Dice "modo demo" pero configuraste la base | Ese deploy no tiene las variables, o falta el redeploy. |
+| 503 con una lista de variables | Hay base configurada pero faltan `ADMIN_PASSWORD` / `MOD_PASSWORD`. Es a propósito: con datos reales no se abre sin clave. |
+| Te desloguea seguido | Falta `SESSION_SECRET`, así que se genera uno nuevo en cada arranque. |
 
 ---
 
