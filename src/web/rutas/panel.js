@@ -1,71 +1,29 @@
 import { Router } from "express";
 import { config } from "../../config.js";
-import { hoyISO } from "../../db/index.js";
-import { abrirRepo, type Participante } from "../../db/repo.js";
-import { alertaRatioPremios, alertasDeTorneo, beneficioModerador, resumirCaja } from "../../domain/caja.js";
-import { aUSD, formatoARS } from "../../domain/money.js";
-import { claveCoincide, limpiarCookieSesion, requiereLogin, setCookieSesion } from "../auth.js";
-import { alerta, esc, etiquetaEstado, layout, metrica } from "../layout.js";
+import { abrirRepo, hoyISO } from "../../datos/repo.js";
+import {
+  alertaRatioPremios,
+  alertasDeTorneo,
+  beneficioModerador,
+  resumirCaja,
+} from "../../dominio/caja.js";
+import { aUSD, formatoARS } from "../../dominio/dinero.js";
+import { requiereLogin } from "../auth.js";
+import { alerta, esc, etiquetaEstado, layout, metrica } from "../plantilla.js";
 
 export const rutasPanel = Router();
 
-rutasPanel.get("/login", (req, res) => {
-  const volver = typeof req.query.volver === "string" ? req.query.volver : "/";
-  const error = req.query.error === "1";
-  res.send(
-    layout(
-      `<div class="tarjeta" style="max-width:420px;margin:60px auto">
-        <h1>Entrar a la Kripta</h1>
-        <p class="sub">Panel de torneos de ${esc(config.nombreComunidad)}.</p>
-        ${error ? alerta("grave", "Clave incorrecta.") : ""}
-        <form method="post" action="/login">
-          <input type="hidden" name="volver" value="${esc(volver)}">
-          <label>Clave</label>
-          <input type="password" name="clave" autofocus required>
-          <div style="margin-top:14px"><button type="submit">Entrar</button></div>
-        </form>
-        <p class="tenue" style="margin-top:14px;font-size:12px">
-          Hay dos claves: la del dueño (admin) y la del moderador (mod). El mod puede operar torneos y cargar cobros;
-          crear temporadas, tocar precios y borrar movimientos de caja es sólo del admin.
-        </p>
-      </div>`,
-      { titulo: "Entrar", publico: true },
-    ),
-  );
-});
-
-rutasPanel.post("/login", (req, res) => {
-  const clave = String(req.body?.clave ?? "");
-  const volver = String(req.body?.volver ?? "/");
-  const destino = volver.startsWith("/") ? volver : "/";
-  if (claveCoincide(clave, config.claveAdmin)) {
-    setCookieSesion(res, "admin");
-    res.redirect(destino);
-    return;
-  }
-  if (claveCoincide(clave, config.claveMod)) {
-    setCookieSesion(res, "mod");
-    res.redirect(destino);
-    return;
-  }
-  res.redirect(`/login?error=1&volver=${encodeURIComponent(destino)}`);
-});
-
-rutasPanel.get("/salir", (_req, res) => {
-  limpiarCookieSesion(res);
-  res.redirect("/login");
-});
-
 rutasPanel.get("/", requiereLogin, async (req, res) => {
   const repo = await abrirRepo();
-  const temporada = await repo.temporadaActiva();
   const hoy = hoyISO();
   const inicioMes = `${hoy.slice(0, 7)}-01`;
 
-  const [movimientosMes, jugadores] = await Promise.all([
+  const [temporada, movimientosMes, jugadores] = await Promise.all([
+    repo.temporadaActiva(),
     repo.movimientos({ desde: inicioMes, hasta: hoy }),
     repo.jugadores(),
   ]);
+
   const resumen = resumirCaja(movimientosMes);
   const beneficio = beneficioModerador(resumen, config.porcentajeMod);
 
@@ -76,15 +34,13 @@ rutasPanel.get("/", requiereLogin, async (req, res) => {
     : [];
 
   // Los inscriptos de cada torneo se usan dos veces (alertas y tabla): una sola carga.
-  const participantesPorTorneo = new Map<number, Participante[]>(
+  const participantesPorTorneo = new Map(
     await Promise.all(
-      torneosAbiertos.map(
-        async (t) => [t.id, await repo.participantes(t.id)] as [number, Participante[]],
-      ),
+      torneosAbiertos.map(async (t) => [t.id, await repo.participantes(t.id)]),
     ),
   );
 
-  const alertas: string[] = [];
+  const alertas = [];
   const alertaRatio = alertaRatioPremios(resumen);
   if (alertaRatio) alertas.push(alerta(alertaRatio.nivel, alertaRatio.mensaje));
   if (!temporada) {
@@ -95,16 +51,17 @@ rutasPanel.get("/", requiereLogin, async (req, res) => {
       ),
     );
   }
+  for (const aviso of config.avisos) alertas.push(alerta("atencion", aviso));
 
   for (const torneo of torneosAbiertos) {
     const participantes = participantesPorTorneo.get(torneo.id) ?? [];
-    const pagos = participantes.filter((p) => p.pago_ok === 1 || p.cubierto_por_pase === 1).length;
+    const pagos = participantes.filter((p) => p.pagoOk || p.cubiertoPorPase).length;
     for (const a of alertasDeTorneo({
-      inscripcionCentavos: torneo.inscripcion_centavos,
-      premioCentavos: torneo.premio_centavos,
+      inscripcionCentavos: torneo.inscripcionCentavos,
+      premioCentavos: torneo.premioCentavos,
       participantesPagos: pagos,
       participantesTotales: participantes.length,
-      minimoParticipantes: torneo.minimo_participantes,
+      minimoParticipantes: torneo.minimoParticipantes,
       estado: torneo.estado,
     })) {
       alertas.push(alerta(a.nivel, `${torneo.nombre}: ${a.mensaje}`));
@@ -114,12 +71,13 @@ rutasPanel.get("/", requiereLogin, async (req, res) => {
   const filasTorneos = torneosAbiertos
     .map((t) => {
       const participantes = participantesPorTorneo.get(t.id) ?? [];
-      const presentes = participantes.filter((p) => p.presente === 1).length;
+      const presentes = participantes.filter((p) => p.presente).length;
       return `<tr>
-        <td><a href="/torneos/${t.id}">${esc(t.nombre)}</a><div class="tenue" style="font-size:12px">${esc(t.juego)} ${esc(t.formato)}</div></td>
-        <td class="mono">${esc(t.empieza_en.replace("T", " "))}</td>
+        <td><a href="/torneos/${t.id}">${esc(t.nombre)}</a>
+          <div class="tenue" style="font-size:12px">${esc(t.juego)} ${esc(t.formato)}</div></td>
+        <td class="mono">${esc(String(t.empiezaEn).replace("T", " "))}</td>
         <td>${participantes.length}/${t.cupo} <span class="tenue">(${presentes} presentes)</span></td>
-        <td>${formatoARS(t.premio_centavos)}</td>
+        <td>${formatoARS(t.premioCentavos)}</td>
         <td>${etiquetaEstado(t.estado)}</td>
       </tr>`;
     })
@@ -135,11 +93,30 @@ rutasPanel.get("/", requiereLogin, async (req, res) => {
     )
     .join("");
 
+  // Panel vacío: en vez de mostrar tablas en blanco, ofrecemos el atajo para llenarlo.
+  const vacio =
+    !temporada && jugadores.length === 0
+      ? `<div class="tarjeta">
+          <h3>Está todo vacío</h3>
+          <p class="tenue">Podés empezar cargando datos de ejemplo para ver cómo funciona, y borrarlos después.
+          O arrancar en serio creando una temporada.</p>
+          <form method="post" action="/sembrar" class="inline">
+            <button type="submit">Cargar datos de ejemplo</button>
+          </form>
+          <a class="boton secundario" href="/temporadas">Crear una temporada</a>
+        </div>`
+      : "";
+
   const contenido = `
     <h1>Hoy</h1>
-    <p class="sub">${temporada ? `Temporada activa: <strong>${esc(temporada.nombre)}</strong> (${esc(temporada.desde_fecha)} a ${esc(temporada.hasta_fecha)})` : "Sin temporada activa"}</p>
+    <p class="sub">${
+      temporada
+        ? `Temporada activa: <strong>${esc(temporada.nombre)}</strong> (${esc(temporada.desdeFecha)} a ${esc(temporada.hastaFecha)})`
+        : "Sin temporada activa"
+    }</p>
 
     ${alertas.join("")}
+    ${vacio}
 
     <div class="grid g3">
       ${metrica("Ingresos del mes", formatoARS(resumen.ingresosCentavos), config.tipoCambio ? `${aUSD(resumen.ingresosCentavos, config.tipoCambio)} · TC ${config.tipoCambioFecha}` : "")}

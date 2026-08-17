@@ -6,65 +6,34 @@
  * es el que sostiene el ranking; el bonus por puesto es el que lo hace competitivo.
  */
 
-export interface ReglasPuntos {
-  participacion: number;
-  porVictoria: number;
-  bonusPuesto: Record<string, number>; // { "1": 15, "2": 9, "3": 5 }
-  bonusPresentarse: number; // premia el check-in a tiempo
-}
-
-export const REGLAS_POR_DEFECTO: ReglasPuntos = {
+export const REGLAS_POR_DEFECTO = {
   participacion: 5,
   porVictoria: 3,
-  bonusPuesto: { "1": 15, "2": 9, "3": 5 },
+  bonusPuesto: { 1: 15, 2: 9, 3: 5 },
   bonusPresentarse: 2,
 };
 
-export interface ResultadoTorneo {
-  torneoId: number;
-  jugadorId: number;
-  puesto: number;
-  victorias: number;
-  partidosJugados: number;
-  sePresento: boolean;
-}
-
-export interface FilaRanking {
-  jugadorId: number;
-  puntos: number;
-  torneos: number;
-  victorias: number;
-  primeros: number;
-  segundos: number;
-  terceros: number;
-}
-
-export function puntosDeResultado(resultado: ResultadoTorneo, reglas: ReglasPuntos): number {
+export function puntosDeResultado(resultado, reglas = REGLAS_POR_DEFECTO) {
   if (!resultado.sePresento) return 0;
   let puntos = reglas.participacion + reglas.bonusPresentarse;
   puntos += resultado.victorias * reglas.porVictoria;
-  puntos += reglas.bonusPuesto[String(resultado.puesto)] ?? 0;
+  puntos += reglas.bonusPuesto?.[String(resultado.puesto)] ?? 0;
   return puntos;
 }
 
-export function calcularRanking(
-  resultados: ResultadoTorneo[],
-  reglas: ReglasPuntos = REGLAS_POR_DEFECTO,
-): FilaRanking[] {
-  const porJugador = new Map<number, FilaRanking>();
+export function calcularRanking(resultados, reglas = REGLAS_POR_DEFECTO) {
+  const porJugador = new Map();
 
   for (const resultado of resultados) {
-    const fila =
-      porJugador.get(resultado.jugadorId) ??
-      {
-        jugadorId: resultado.jugadorId,
-        puntos: 0,
-        torneos: 0,
-        victorias: 0,
-        primeros: 0,
-        segundos: 0,
-        terceros: 0,
-      };
+    const fila = porJugador.get(resultado.jugadorId) ?? {
+      jugadorId: resultado.jugadorId,
+      puntos: 0,
+      torneos: 0,
+      victorias: 0,
+      primeros: 0,
+      segundos: 0,
+      terceros: 0,
+    };
 
     fila.puntos += puntosDeResultado(resultado, reglas);
     if (resultado.sePresento) {
@@ -86,6 +55,16 @@ export function calcularRanking(
 }
 
 /** Los N que entran a los playoffs de temporada. */
-export function clasificados(ranking: FilaRanking[], cupos: number): FilaRanking[] {
+export function clasificados(ranking, cupos) {
   return ranking.slice(0, Math.max(0, cupos));
+}
+
+/** Normaliza las reglas que vienen del formulario, cayendo a los valores por defecto. */
+export function reglasDesde(objeto) {
+  if (!objeto || typeof objeto !== "object") return REGLAS_POR_DEFECTO;
+  return {
+    ...REGLAS_POR_DEFECTO,
+    ...objeto,
+    bonusPuesto: { ...REGLAS_POR_DEFECTO.bonusPuesto, ...(objeto.bonusPuesto ?? {}) },
+  };
 }

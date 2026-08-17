@@ -12,41 +12,23 @@
  *    `alertasDeTorneo` marca esos casos para que se corrija el reglamento, no para bloquear.
  */
 
-export type TipoMovimiento = "ingreso" | "egreso";
+export const RATIO_PREMIOS_MAXIMO = 0.7;
 
-export interface Movimiento {
-  id?: number;
-  fecha: string; // YYYY-MM-DD
-  tipo: TipoMovimiento;
-  categoria: string;
-  concepto: string;
-  montoCentavos: number;
-  torneoId?: number | null;
-}
-
-export interface ResumenCaja {
-  ingresosCentavos: number;
-  egresosCentavos: number;
-  saldoCentavos: number;
-  premiosCentavos: number;
-  ratioPremios: number; // premios / ingresos, 0 si no hay ingresos
-  porCategoria: Array<{ categoria: string; tipo: TipoMovimiento; totalCentavos: number }>;
-}
-
-export function resumirCaja(movimientos: Movimiento[]): ResumenCaja {
+export function resumirCaja(movimientos) {
   let ingresos = 0;
   let egresos = 0;
   let premios = 0;
-  const acumulado = new Map<string, { categoria: string; tipo: TipoMovimiento; totalCentavos: number }>();
+  const acumulado = new Map();
 
   for (const m of movimientos) {
-    if (m.tipo === "ingreso") ingresos += m.montoCentavos;
-    else egresos += m.montoCentavos;
-    if (m.categoria === "premio") premios += m.montoCentavos;
+    const monto = Number(m.montoCentavos) || 0;
+    if (m.tipo === "ingreso") ingresos += monto;
+    else egresos += monto;
+    if (m.categoria === "premio") premios += monto;
 
     const clave = `${m.tipo}:${m.categoria}`;
     const actual = acumulado.get(clave) ?? { categoria: m.categoria, tipo: m.tipo, totalCentavos: 0 };
-    actual.totalCentavos += m.montoCentavos;
+    actual.totalCentavos += monto;
     acumulado.set(clave, actual);
   }
 
@@ -60,27 +42,11 @@ export function resumirCaja(movimientos: Movimiento[]): ResumenCaja {
   };
 }
 
-export const RATIO_PREMIOS_MAXIMO = 0.7;
+export function alertasDeTorneo(torneo) {
+  const alertas = [];
+  const recaudado = torneo.inscripcionCentavos * torneo.participantesPagos;
 
-export interface DatosTorneoParaAlertas {
-  inscripcionCentavos: number;
-  premioCentavos: number;
-  participantesPagos: number;
-  participantesTotales: number;
-  minimoParticipantes: number;
-  estado: string;
-}
-
-export interface Alerta {
-  nivel: "info" | "atencion" | "grave";
-  mensaje: string;
-}
-
-export function alertasDeTorneo(t: DatosTorneoParaAlertas): Alerta[] {
-  const alertas: Alerta[] = [];
-  const recaudado = t.inscripcionCentavos * t.participantesPagos;
-
-  if (t.premioCentavos > 0 && recaudado > 0 && recaudado === t.premioCentavos) {
+  if (torneo.premioCentavos > 0 && recaudado > 0 && recaudado === torneo.premioCentavos) {
     alertas.push({
       nivel: "grave",
       mensaje:
@@ -89,22 +55,24 @@ export function alertasDeTorneo(t: DatosTorneoParaAlertas): Alerta[] {
     });
   }
 
-  if (t.premioCentavos > recaudado && recaudado > 0) {
+  if (torneo.premioCentavos > recaudado && recaudado > 0) {
     alertas.push({
       nivel: "info",
-      mensaje: "El premio es mayor a lo recaudado: lo estás subsidiando vos. Está bien, pero anotalo en la caja.",
+      mensaje:
+        "El premio es mayor a lo recaudado: lo estás subsidiando vos. Está bien, pero anotalo en la caja.",
     });
   }
 
-  if (t.estado === "inscripcion" && t.participantesTotales < t.minimoParticipantes) {
+  if (torneo.estado === "inscripcion" && torneo.participantesTotales < torneo.minimoParticipantes) {
+    const faltan = torneo.minimoParticipantes - torneo.participantesTotales;
     alertas.push({
       nivel: "atencion",
-      mensaje: `Faltan ${t.minimoParticipantes - t.participantesTotales} inscriptos para el mínimo. Si no llega, se reprograma y se devuelve.`,
+      mensaje: `Faltan ${faltan} inscriptos para el mínimo. Si no llega, se reprograma y se devuelve.`,
     });
   }
 
-  const impagos = t.participantesTotales - t.participantesPagos;
-  if (impagos > 0 && t.estado !== "borrador") {
+  const impagos = torneo.participantesTotales - torneo.participantesPagos;
+  if (impagos > 0 && torneo.estado !== "borrador") {
     alertas.push({
       nivel: "atencion",
       mensaje: `${impagos} inscripto(s) sin pago confirmado ni pase activo.`,
@@ -114,7 +82,7 @@ export function alertasDeTorneo(t: DatosTorneoParaAlertas): Alerta[] {
   return alertas;
 }
 
-export function alertaRatioPremios(resumen: ResumenCaja): Alerta | null {
+export function alertaRatioPremios(resumen) {
   if (resumen.ingresosCentavos === 0) return null;
   if (resumen.ratioPremios > RATIO_PREMIOS_MAXIMO) {
     const pct = Math.round(resumen.ratioPremios * 100);
@@ -131,7 +99,7 @@ export function alertaRatioPremios(resumen: ResumenCaja): Alerta | null {
  * Se calcula sobre el saldo y no sobre los ingresos justamente para que el mod no cobre
  * cuando el mes cerró en rojo.
  */
-export function beneficioModerador(resumen: ResumenCaja, porcentaje: number): number {
+export function beneficioModerador(resumen, porcentaje) {
   if (resumen.saldoCentavos <= 0) return 0;
   return Math.round(resumen.saldoCentavos * porcentaje);
 }

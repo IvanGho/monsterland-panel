@@ -1,7 +1,17 @@
+// Abrir el repo en GitHub Codespaces y ver el panel andando sin instalar nada en la máquina.
+//
+// No hace falta configurar variables de entorno: sin DATABASE_URL el panel arranca en modo
+// demo, con los datos en memoria, y se entra con la clave "demo". Para trabajar con datos que
+// se guarden, poner DATABASE_URL en un archivo .env (ver .env.example).
+//
+// Tampoco hay paso de build: el proyecto es JavaScript plano, así que alcanza con npm install.
 {
   "name": "Panel de torneos de Monsterland",
   "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
-  "postCreateCommand": "npm install && npm run build && npm run preparar && npm run seed",
+  "postCreateCommand": "npm install",
+  "postAttachCommand": {
+    "panel": "npm start"
+  },
   "forwardPorts": [3000],
   "portsAttributes": {
     "3000": {
