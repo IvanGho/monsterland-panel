@@ -77,3 +77,66 @@ los comentarios del código y a la documentación.
 2. Doble eliminación para los playoffs de temporada.
 3. Exportar la caja a CSV para el contador.
 4. Login con Discord (OAuth) si algún día operan más de dos personas.
+
+
+---
+
+## Arquitectura decidida (agosto 2026)
+
+Son **dos aplicaciones separadas** con una sola base de datos compartida:
+
+```
+kripta-web  (Next.js en Vercel, publico)     -> capta gente de afuera y la lleva al Discord
+      |  lee
+      v
+Turso / libSQL  (base compartida, free tier) -> unica fuente de verdad
+      ^
+      |  escribe
+monsterland-panel (este repo, privado)       -> la operacion: torneos, pagos, ranking, caja
+```
+
+Por que asi y no todo junto: el panel lo usan 2 personas y escribe datos sensibles; el sitio
+publico lo visitan desconocidos, tiene que cargar rapido y posicionar en Google. Mezclarlos
+obliga a elegir mal en los dos lados.
+
+**Decision cerrada sobre las ramas:** se sigue con `main` (TypeScript + libSQL/Turso).
+La rama `app-nueva-vercel` (reescritura en JavaScript plano con Postgres) **no se mergea**:
+funciona, pero tirar los tipos justamente cuando el mantenimiento va a ser asistido por IA es
+ir en contra. Se conserva como referencia y nada mas. Si algun dia hay que pasar a Postgres,
+se cambia el driver dentro de `src/db/`, no se reescribe la app.
+
+## La moneda interna: reglas duras
+
+La moneda (nombre a definir) es un **programa de lealtad**, no una moneda. La diferencia no es
+semantica: es lo que separa esto de una casa de apuestas. Cuatro reglas, las cuatro obligatorias:
+
+1. **No se compra nunca.** No hay pack, no hay tienda de monedas, no hay "recarga".
+2. **No se transfiere entre usuarios.** Sin mercado interno, sin regalar, sin comerciar.
+   Un mercado P2P convierte la moneda en algo con precio real y nos deja exactamente donde
+   no queremos estar.
+3. **Se gana jugando**: participar, ganar, hacer check-in, rachas, referidos que se quedan.
+4. **Se gasta en un catalogo cerrado** que fija la organizacion: cosmeticos y roles (costo cero),
+   y como maximo Nitro o gift cards con tope mensual y a criterio de la organizacion.
+
+Nunca se comunica como "gana plata jugando". Se comunica como recompensa por jugar.
+El catalogo es un gasto real: entra a la caja y cuenta para el limite de premios + recompensas
+sobre ingresos (70%).
+
+## Identidad visual
+
+Verde del logo (lobo verde neon sobre negro), no violeta. Los tokens viven en
+`src/web/layout.ts` y el sitio publico usa los mismos:
+
+| Token | Valor | Uso |
+|---|---|---|
+| `--fondo` | `#050806` | negro con verde, nunca negro puro |
+| `--panel` | `#0d160f` | tarjetas |
+| `--panel-2` | `#122117` | inputs y superficies elevadas |
+| `--borde` | `#1e3a26` | bordes |
+| `--texto` | `#e4f2e7` | texto |
+| `--tenue` | `#8ca694` | texto secundario |
+| `--acento` | `#2fc94f` | verde del lobo: botones y datos vivos |
+| `--acento-2` | `#5dff86` | glow: hover y titulos |
+
+Tipografia: la del sistema. No se suman fuentes web salvo que haya una razon de marca fuerte,
+porque cada fuente es tiempo de carga y el sitio publico se juega el posicionamiento ahi.

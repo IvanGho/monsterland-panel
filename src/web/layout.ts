@@ -13,17 +13,24 @@ export function esc(valor: unknown): string {
 }
 
 const CSS = `
+/*
+ * Paleta Kripta, sacada del logo del servidor: lobo verde neón sobre negro.
+ * Es la misma que usa el sitio público, así que si cambia un token, cambia en los dos lados.
+ *   --acento    verde del lobo, para acciones y datos vivos
+ *   --acento-2  el glow más claro, para hover y títulos
+ *   --fondo     negro con un toque de verde, nunca negro puro (cansa la vista de noche)
+ */
 :root {
-  --fondo: #0b0a0f;
-  --panel: #14121c;
-  --panel-2: #1b1826;
-  --borde: #2a2438;
-  --texto: #e8e4f0;
-  --tenue: #9a91b0;
-  --acento: #8b2fc9;
-  --acento-2: #c94fd6;
-  --ok: #3ecf8e;
-  --alerta: #e5a13a;
+  --fondo: #050806;
+  --panel: #0d160f;
+  --panel-2: #122117;
+  --borde: #1e3a26;
+  --texto: #e4f2e7;
+  --tenue: #8ca694;
+  --acento: #2fc94f;
+  --acento-2: #5dff86;
+  --ok: #3be85f;
+  --alerta: #e0b84a;
   --grave: #e5484d;
 }
 * { box-sizing: border-box; }
@@ -35,7 +42,7 @@ a { color: var(--acento-2); text-decoration: none; }
 a:hover { text-decoration: underline; }
 header.top {
   display: flex; align-items: center; gap: 18px; padding: 12px 20px;
-  background: linear-gradient(90deg, #14121c, #1d1430); border-bottom: 1px solid var(--borde);
+  background: linear-gradient(90deg, #0d160f, #0f2416); border-bottom: 1px solid var(--borde);
   position: sticky; top: 0; z-index: 10;
 }
 header.top .marca { font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--acento-2); }
@@ -58,7 +65,7 @@ p.sub { color: var(--tenue); margin: 0 0 18px; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--borde); }
 th { color: var(--tenue); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
-tr:hover td { background: rgba(139, 47, 201, 0.06); }
+tr:hover td { background: rgba(47, 201, 79, 0.07); }
 form.inline { display: inline; }
 input, select, textarea {
   background: var(--panel-2); color: var(--texto); border: 1px solid var(--borde);
