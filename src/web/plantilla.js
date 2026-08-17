@@ -18,19 +18,35 @@ export function esc(valor) {
     .replace(/'/g, "&#39;");
 }
 
-const CSS = `
+/**
+ * Paleta Kripta, sacada del logo del servidor: lobo verde neón sobre negro.
+ *
+ * Se exporta y no se copia en ningún otro archivo: la página de configuración también la
+ * usa, y cuando estos tokens estaban duplicados el panel terminó mitad verde y mitad
+ * violeta. Si cambia un token, cambia en todos lados.
+ *
+ *   --acento    verde del lobo, para acciones y datos vivos
+ *   --acento-2  el glow más claro, para hover y títulos
+ *   --fondo     negro con un toque de verde, nunca negro puro (cansa la vista de noche)
+ *
+ * El sitio público (kripta-web) usa los mismos valores.
+ */
+export const TOKENS = `
 :root {
-  --fondo: #0b0a0f; --panel: #14121c; --panel-2: #1b1826; --borde: #2a2438;
-  --texto: #e8e4f0; --tenue: #9a91b0; --acento: #8b2fc9; --acento-2: #c94fd6;
-  --ok: #3ecf8e; --alerta: #e5a13a; --grave: #e5484d;
-}
+  --fondo: #050806; --panel: #0d160f; --panel-2: #122117; --borde: #1e3a26;
+  --texto: #e4f2e7; --tenue: #8ca694; --acento: #2fc94f; --acento-2: #5dff86;
+  --ok: #3be85f; --alerta: #e0b84a; --grave: #e5484d;
+}`;
+
+const CSS = `
+${TOKENS}
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--fondo); color: var(--texto);
   font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif; font-size: 15px; line-height: 1.5; }
 a { color: var(--acento-2); text-decoration: none; }
 a:hover { text-decoration: underline; }
 header.top { display: flex; align-items: center; gap: 18px; padding: 12px 20px;
-  background: linear-gradient(90deg, #14121c, #1d1430); border-bottom: 1px solid var(--borde);
+  background: linear-gradient(90deg, #0d160f, #0f2416); border-bottom: 1px solid var(--borde);
   position: sticky; top: 0; z-index: 10; }
 header.top .marca { font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--acento-2); }
 header.top nav { display: flex; gap: 14px; flex-wrap: wrap; }
@@ -51,13 +67,15 @@ p.sub { color: var(--tenue); margin: 0 0 18px; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--borde); }
 th { color: var(--tenue); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
-tr:hover td { background: rgba(139, 47, 201, 0.06); }
+tr:hover td { background: rgba(47, 201, 79, 0.07); }
 form.inline { display: inline; }
 input, select, textarea { background: var(--panel-2); color: var(--texto); border: 1px solid var(--borde);
   border-radius: 8px; padding: 8px 10px; font-size: 14px; font-family: inherit; width: 100%; }
 label { display: block; font-size: 12px; color: var(--tenue); text-transform: uppercase;
   letter-spacing: 1px; margin: 10px 0 4px; }
-button, .boton { background: var(--acento); color: #fff; border: 0; border-radius: 8px; padding: 9px 14px;
+/* Texto oscuro sobre el verde, no blanco: el acento es un verde neón claro y el blanco
+   encima queda casi ilegible (contraste ~2:1 contra ~10:1 del oscuro). */
+button, .boton { background: var(--acento); color: var(--fondo); border: 0; border-radius: 8px; padding: 9px 14px;
   font-size: 14px; font-weight: 600; cursor: pointer; display: inline-block; }
 button:hover, .boton:hover { background: var(--acento-2); text-decoration: none; }
 button.secundario, .boton.secundario { background: var(--panel-2); border: 1px solid var(--borde); color: var(--texto); }
@@ -76,9 +94,11 @@ button.chico, .boton.chico { padding: 5px 9px; font-size: 12px; }
 .alerta.info { border-color: var(--borde); color: var(--tenue); }
 .alerta.atencion { border-color: var(--alerta); color: var(--alerta); }
 .alerta.grave { border-color: var(--grave); color: var(--grave); }
-.cinta-demo { background: #3a2508; border-bottom: 1px solid var(--alerta); color: var(--alerta);
+/* La cinta de demo se queda en ámbar a propósito: es una advertencia y tiene que cortar
+   con el verde de la interfaz, no integrarse. */
+.cinta-demo { background: #2b2109; border-bottom: 1px solid var(--alerta); color: var(--alerta);
   padding: 8px 20px; font-size: 13px; text-align: center; }
-.cinta-demo a { color: #ffd591; text-decoration: underline; }
+.cinta-demo a { color: #f0d79a; text-decoration: underline; }
 .llave { display: flex; gap: 26px; overflow-x: auto; padding-bottom: 10px; }
 .ronda { min-width: 230px; }
 .ronda h4 { color: var(--tenue); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 10px; }
@@ -88,7 +108,7 @@ button.chico, .boton.chico { padding: 5px 9px; font-size: 12px; }
 .partido .lado.vacio { color: var(--tenue); font-style: italic; }
 .tenue { color: var(--tenue); }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
-pre.copiable { background: #0d0b13; border: 1px solid var(--borde); border-radius: 8px; padding: 12px;
+pre.copiable { background: #081109; border: 1px solid var(--borde); border-radius: 8px; padding: 12px;
   white-space: pre-wrap; font-size: 13px; color: var(--texto); }
 .pill { display: inline-block; background: var(--panel-2); border: 1px solid var(--borde);
   border-radius: 20px; padding: 2px 9px; font-size: 12px; }

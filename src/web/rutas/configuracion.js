@@ -9,28 +9,33 @@
  * claves del modo demo, que son públicas por definición porque no protegen nada real.
  */
 import { config } from "../../config.js";
-import { esc } from "../plantilla.js";
+import { esc, TOKENS } from "../plantilla.js";
 
+/**
+ * Los colores salen de los tokens de la plantilla, no copiados a mano: esta página tiene su
+ * propio CSS porque se muestra incluso cuando el panel no arrancó, pero la paleta es una sola.
+ */
 const CSS = `
-body { background:#0b0a0f; color:#e8e4f0; font-family: ui-sans-serif, system-ui, sans-serif;
+${TOKENS}
+body { background: var(--fondo); color: var(--texto); font-family: ui-sans-serif, system-ui, sans-serif;
   line-height:1.6; margin:0; padding:40px 20px; }
 .caja { max-width: 760px; margin: 0 auto; }
-h1 { color:#c94fd6; font-size:24px; margin:0 0 6px; }
-h2 { font-size:16px; margin:28px 0 8px; color:#c94fd6; }
-p.sub { color:#9a91b0; margin:0 0 24px; }
-code { background:#1b1826; padding:2px 6px; border-radius:4px; font-size:13px; }
-pre { background:#14121c; border:1px solid #2a2438; border-radius:8px; padding:12px;
+h1 { color: var(--acento-2); font-size:24px; margin:0 0 6px; }
+h2 { font-size:16px; margin:28px 0 8px; color: var(--acento-2); }
+p.sub { color: var(--tenue); margin:0 0 24px; }
+code { background: var(--panel-2); padding:2px 6px; border-radius:4px; font-size:13px; }
+pre { background: var(--panel); border:1px solid var(--borde); border-radius:8px; padding:12px;
   overflow-x:auto; font-size:13px; }
 table { width:100%; border-collapse:collapse; margin:10px 0 0; font-size:14px; }
-th,td { text-align:left; padding:8px 10px; border-bottom:1px solid #2a2438; }
-th { color:#9a91b0; font-size:12px; text-transform:uppercase; letter-spacing:1px; }
-.si { color:#3ecf8e; }
-.no { color:#e5484d; }
-.opc { color:#9a91b0; }
-.aviso { border:1px solid #e5a13a; color:#e5a13a; border-radius:8px; padding:12px; margin:0 0 16px; }
-.ok { border:1px solid #3ecf8e; color:#3ecf8e; border-radius:8px; padding:12px; margin:0 0 16px; }
+th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--borde); }
+th { color: var(--tenue); font-size:12px; text-transform:uppercase; letter-spacing:1px; }
+.si { color: var(--ok); }
+.no { color: var(--grave); }
+.opc { color: var(--tenue); }
+.aviso { border:1px solid var(--alerta); color: var(--alerta); border-radius:8px; padding:12px; margin:0 0 16px; }
+.ok { border:1px solid var(--ok); color: var(--ok); border-radius:8px; padding:12px; margin:0 0 16px; }
 ol li { margin:8px 0; }
-a { color:#c94fd6; }
+a { color: var(--acento-2); }
 .volver { display:inline-block; margin-top:24px; }
 `;
 
