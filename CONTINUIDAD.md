@@ -1,6 +1,6 @@
 # Continuidad del proyecto — leer antes de tocar nada
 
-Documento de traspaso. Escrito el 17/08/2026 al cerrar la sesión donde se construyó el panel.
+Documento de traspaso. **Última actualización: 18/08/2026.**
 Si sos un agente que acaba de clonar este repo: **leé esto y `.kiro/steering/monsterland.md` antes de proponer cambios.**
 
 ---
@@ -19,63 +19,71 @@ variable: **15% del saldo** mensual (ingresos − egresos), nunca sobre los ingr
 Pase de Temporada mensual/trimestral, y temporadas de ~6 semanas con ranking que se reinicia.
 Cobros por Mercado Pago y transferencia; Lemon/USDT sólo como excepción para gente del exterior.
 
-**Este repo** es el panel de operación (privado, 2 usuarios). Está previsto un segundo proyecto,
-`kripta-web`: el sitio público de captación en Next.js sobre Vercel, con ranking en vivo, próximos torneos,
-anotador de Truco y un convertidor de sensibilidad para shooters (herramientas para traer tráfico orgánico).
+**El dueño no programa.** Las tareas técnicas las hace un agente; a él le corresponden las decisiones,
+las cuentas (Vercel, base de datos, dominio) y los assets. Tenerlo presente al redactar: explicar el
+"por qué", no sólo el "qué".
+
+### Los dos repositorios
+
+| Repo | Qué es | Estado |
+|---|---|---|
+| **`IvanGho/monsterland-panel`** (este) | El panel de operación: torneos, pagos, ranking, caja. Privado, 2 usuarios. | Andando, en modo demo hasta que haya base |
+| **`IvanGho/kripta-web`** | El sitio público de captación. Next.js. Su único objetivo: que el de afuera entre al Discord. | Primera versión mergeada en `main` |
+
+Comparten **una sola base de datos**. No mezclarlos: el panel escribe datos sensibles y lo usan 2 personas;
+el sitio público lo visitan desconocidos y se juega el posicionamiento en Google.
 
 ---
 
-## 2. Estado real del repositorio al 17/08/2026
+## 2. Estado real de `monsterland-panel` al 18/08/2026
 
-| Rama | Qué contiene | Qué hacer |
-|---|---|---|
-| `main` | TypeScript + libSQL/Turso. 51 tests pasan, typecheck limpio. **Tiene la paleta verde y el steering completo.** | Es la base actual |
-| `app-nueva-vercel` (PR #2, abierto) | Reescritura completa en JavaScript plano + Postgres (`pg`) + PGlite para tests. 63 tests pasan. `server.js` en la raíz que importa express y hace `export default` → **es la única versión que satisface la detección de Express de Vercel** | Decisión del dueño: **se sigue con esta.** Ver sección 3 |
-| `compatibilidad-vercel` | Ya mergeada en `main` (PR #1) | **Borrar** |
-| `identidad-verde` | Ya mergeada en `main` (PR #3) | **Borrar** |
+**`main` es la reescritura en JavaScript plano.** Se resolvió PR #2 y se mergeó.
 
-**PR #2 está en estado `dirty`: tiene conflictos y no se puede mergear tal cual.**
+- JavaScript plano, **sin paso de build**. No hay TypeScript ni bundler.
+- Base **Postgres** (`pg`). Sin `DATABASE_URL` arranca en **modo demo** con los datos en memoria y lo avisa en pantalla.
+- 3 dependencias de producción: `express`, `cookie-parser`, `pg`. Las tres JS puro, **ninguna nativa**.
+- 63 tests (`npm test`) + prueba de humo por HTTP (`node scripts/humo.js`, 44 chequeos).
+- Paleta verde aplicada, steering actualizado y devcontainer restaurado.
 
-### Lo que se pierde si se mergea PR #2 sin cuidado
+### Ramas y PRs
 
-Tres cosas viven sólo en `main` y **no** están en la rama de la reescritura. Hay que trasladarlas a mano:
+| | Estado |
+|---|---|
+| PR #1 `compatibilidad-vercel` | Mergeado. Rama **borrada** |
+| PR #2 `app-nueva-vercel` | **Mergeado.** La rama quedó y se puede borrar |
+| PR #3 `identidad-verde` | Mergeado. Rama **borrada** |
+| PR #4 `traspaso` | Abierto. Es este documento |
+| PR #5 `vercel-un-solo-proyecto` | **Abierto.** README: cómo dejar un solo proyecto de Vercel + tabla de síntoma → causa |
 
-1. **La paleta verde.** `main` tiene los tokens correctos en `src/web/layout.ts`.
-   La rama nueva tiene `src/web/plantilla.js` con los colores **violetas viejos** (`#8b2fc9`).
-   Tokens correctos, hay que pisarlos en `plantilla.js`:
+### Lo que se trasladó al resolver PR #2 (y por qué costó)
 
-   ```
-   --fondo: #050806;   --panel: #0d160f;   --panel-2: #122117;  --borde: #1e3a26;
-   --texto: #e4f2e7;   --tenue: #8ca694;   --acento: #2fc94f;   --acento-2: #5dff86;
-   --ok: #3be85f;      --alerta: #e0b84a;  --grave: #e5484d;
-   ```
-   Además: el gradiente del header pasa a `linear-gradient(90deg, #0d160f, #0f2416)`
-   y el hover de las filas de tabla a `rgba(47, 201, 79, 0.07)`.
-
-2. **Las secciones nuevas del steering** (`.kiro/steering/monsterland.md` en `main`): arquitectura de dos
-   apps, decisión sobre las ramas, las cuatro reglas de la moneda interna y la tabla de la paleta.
-   La rama nueva tiene la versión vieja del archivo.
-
-3. **`.devcontainer/devcontainer.json`**, que la reescritura borró. Es lo que permite abrir el repo en
-   GitHub Codespaces y verlo funcionando sin instalar nada: el dueño no es desarrollador y ese camino le sirve.
-   Recuperarlo es opcional pero recomendado.
+1. **La paleta verde estaba en tres lugares, no en uno:** los tokens de `plantilla.js`, el CSS propio de
+   `rutas/configuracion.js` y `public/favicon.svg`. Ahora los tokens se **exportan como `TOKENS`** desde
+   `src/web/plantilla.js` y configuración los importa. **Nunca volver a copiar los colores a otro archivo.**
+2. Se arreglaron dos restos violetas que PR #3 no había alcanzado: el fondo de los bloques de código
+   (`#0d0b13`) y el texto blanco sobre el botón verde, que contra `#2fc94f` daba contraste ~2:1.
+   Ahora el texto de los botones va oscuro (~10:1).
+3. `.devcontainer/devcontainer.json` restaurado y **adaptado**: el de antes llamaba a `npm run build` y
+   `npm run seed`, que en esta estructura no existen.
 
 ---
 
 ## 3. Decisiones tomadas (no reabrir sin permiso explícito)
 
-1. **Se sigue con la reescritura en JavaScript de `app-nueva-vercel`**, porque es la que Vercel deploya sin pelear.
-   Se pierde TypeScript, y el dueño lo aceptó sabiendo el costo.
-   **Mitigación recomendada:** agregar `// @ts-check` y tipos por JSDoc en `src/dominio/` y `src/datos/`.
-   Da la mayor parte de la seguridad de tipos sin build ni dependencias. Hacerlo de a poco, no de golpe.
-2. **La base de datos pasa a Postgres** (consecuencia de elegir la reescritura, que usa `pg`).
-   Turso queda descartado. Usar el free tier de Neon o Supabase, con las variables cargadas en Vercel.
-3. **Nada de reescrituras desde cero de nuevo.** Ya hubo dos versiones en paralelo y costó una sesión entera
-   desenredarlas. Si algo falla, se arregla en el archivo que corresponde.
-4. **Dos aplicaciones separadas** con una sola base compartida: este panel (privado) y `kripta-web` (público).
-   No mezclarlas: el panel escribe datos sensibles y lo usan 2 personas; el sitio público lo visitan
-   desconocidos y se juega el posicionamiento en Google.
+1. **Se sigue con la reescritura en JavaScript.** Es la única versión que Vercel deploya sin pelear.
+   Se perdió TypeScript y el dueño lo aceptó sabiendo el costo.
+   **Mitigación recomendada:** `// @ts-check` y tipos por JSDoc en `src/dominio/` y `src/datos/`,
+   de a poco y no de golpe.
+2. **La base es Postgres.** Free tier de Neon o Supabase. Turso quedó descartado.
+3. **Nada de reescrituras desde cero de nuevo.** Ya hubo dos versiones en paralelo y costó una sesión
+   entera desenredarlas. Si algo falla, se arregla en el archivo que corresponde.
+4. **Dos aplicaciones separadas** con una sola base compartida (ver sección 1).
 5. **Todo cambio va en una rama y se abre PR.** Nunca directo a `main`.
+6. **En el tooling, los defaults quedan como vienen.** `kripta-web` usa `create-next-app` tal cual
+   (TypeScript, Tailwind, App Router) y Vercel lo despliega con detección automática, sin `vercel.json`
+   ni build command propio. El dolor de Vercel vino siempre de configurar a mano.
+7. **El sitio público no calcula reglas de negocio.** Le pide al panel un JSON ya resuelto. Si
+   recalculara el ranking habría dos implementaciones de la misma regla y terminarían discrepando.
 
 ---
 
@@ -95,6 +103,13 @@ Un cambio que rompa una de estas está mal aunque el código funcione y los test
    no se compra nunca · no se transfiere entre usuarios · se gana jugando · se gasta en un catálogo cerrado
    (cosméticos y roles, y como techo Nitro o gift cards con tope mensual).
    El nombre está sin definir; la opción preferida es "Colmillos".
+
+   > **Tensión sin resolver, anotada también en el steering.** La versión vieja de la regla decía que la
+   > moneda no se convierte a nada de valor real, *"ni gift cards"*. Estas cuatro reglas permiten Nitro y
+   > gift cards como techo. Se dejaron las cuatro, que son las más recientes, pero **el dueño todavía no
+   > confirmó cuál gana.** Mientras el catálogo sea cosméticos y roles no hay discusión; habilitar el techo
+   > empuja contra la política de juego de Discord, que mira si la recompensa tiene "valor del mundo real".
+   > **No ampliarlo sin hablarlo.**
 4. **Nunca vocabulario de apuestas.** Se dice inscripción, premio, concurso de habilidad.
    Nunca pozo, apuesta, banca, casa. Aplica al código, a la UI y a los textos que se generan para Discord.
 5. **Cero sponsors o afiliados de casas de apuestas.** En provincia de Buenos Aires el juego online legal son
@@ -108,55 +123,107 @@ Un cambio que rompa una de estas está mal aunque el código funcione y los test
 ## 5. Convenciones técnicas
 
 - **Todo el dinero en centavos enteros.** Nunca float para pesos.
-- **La lógica de negocio vive en el módulo de dominio**, en funciones puras, con test propio.
+- **La lógica de negocio vive en `src/dominio/`**, en funciones puras, con test propio.
   Las rutas sólo traducen HTTP a llamadas de dominio. Si aparece una regla de negocio dentro de una ruta,
   está en el lugar equivocado.
-- **Todo el SQL vive en la capa de datos.** Ningún otro archivo habla SQL.
-- **Todo lo que se muestra pasa por la función de escapado** antes de entrar al HTML.
+- **Todo el SQL vive en `src/almacen/postgres.js`.** Ningún otro archivo habla SQL.
+- **Todo lo que se muestra pasa por `esc()`** de `src/web/plantilla.js` antes de entrar al HTML.
+- **La paleta se importa desde `TOKENS`.** Nunca copiarla.
+- **Todo lo que toca la base es `async`.** Express 5 manda los errores al middleware solo, pero si te
+  olvidás un `await` el bug es silencioso.
 - **Español rioplatense** en UI, comentarios, mensajes de error y nombres de dominio.
 - **Sin dependencias nuevas** salvo razón fuerte. El stack es chico a propósito.
 - **Antes de decir que algo funciona:** correr los tests, el smoke test, y probarlo andando de verdad.
   Un comando que termina sin error no es prueba de nada.
+- **Si un cambio rompe un test existente, se arregla el cambio, no el test.**
+
+### Dos detalles que rompen el deploy si alguien los "limpia"
+
+- **`server.js` tiene que importar `express` y hacer `export default app`.** Es lo que busca el detector
+  de Express de Vercel. Sin eso el build falla con `No entrypoint found which imports express`.
+  Por eso la app se arma con `configurar(express())`: para que ese import sea imprescindible y no
+  decorativo. **No hay `vercel.json` y no debe haberlo.**
+- **`listen()` y `process.exit()` sólo fuera de Vercel**, detrás de `if (!config.enVercel)`.
+
+### `kripta-web`: lo verificado sobre Next 16
+
+- `export const revalidate` y `fetch` con `next: { revalidate }` son el **modelo previo**, pero siguen
+  soportados: se eliminan sólo si se activa `cacheComponents`, que es **opt-in** y no está activado.
+  **No activarlo** sin necesidad.
+- El repo trae un `AGENTS.md` que avisa que esta versión de Next difiere del conocimiento de los modelos.
+  Los docs están en `node_modules/next/dist/docs/`. **Leerlos antes de escribir, no después.**
 
 ---
 
 ## 6. Qué hay que limpiar
 
-**En GitHub:**
-- [ ] Borrar la rama `compatibilidad-vercel` (ya mergeada)
-- [ ] Borrar la rama `identidad-verde` (ya mergeada)
-- [ ] Resolver los conflictos de PR #2 trasladando las 3 cosas de la sección 2, y mergearlo
-- [ ] Volver el repo a **privado**: hoy es público y `OPERACION.md` expone el esquema de monetización,
-      el porcentaje del mod y el razonamiento legal. Nada secreto se filtró (ni `.env` ni la base están
-      versionados), pero el plan de operación no tiene por qué ser público
+**Hecho:**
+- [x] Resolver los conflictos de PR #2 y mergearlo
+- [x] Borrar las ramas `compatibilidad-vercel` e `identidad-verde`
+- [x] Trasladar la paleta verde, el steering y el devcontainer a la estructura nueva
 
-**En Vercel:**
-- [ ] Dejar **un solo proyecto** conectado a este repo. Si hay varios, borrar los que sobran: son la causa
-      de los deploys que se pisan entre sí
-- [ ] Production Branch = `main`
-- [ ] Cargar las variables de entorno: `ADMIN_PASSWORD`, `MOD_PASSWORD`, `SESSION_SECRET`,
-      la URL de Postgres, y las de tipo de cambio y porcentaje del mod
-- [ ] Verificar que el deploy sirve `/salud` y que el login funciona antes de dar nada por terminado
+**Pendiente en GitHub:**
+- [ ] Borrar la rama `app-nueva-vercel` (ya mergeada)
+- [ ] Mergear PR #5 (README de Vercel) y PR #4 (este documento)
+- [ ] Volver `monsterland-panel` a **privado**: hoy es público y `OPERACION.md` expone el esquema de
+      monetización, el porcentaje del mod y el razonamiento legal. Nada secreto se filtró (ni `.env` ni la
+      base están versionados), pero el plan de operación no tiene por qué ser público
+
+**Pendiente en Vercel (lo tiene que hacer el dueño, el agente no tiene acceso):**
+- [ ] **Un solo proyecto por repo.** Si hay varios apuntando al mismo, los deploys se pisan: es la causa de
+      los "no toma los cambios". Los pasos están en el README del panel
+- [ ] Production Branch = `main` en los dos proyectos
+- [ ] Crear la base **Postgres** (Storage → Create Database) y cargar en el panel: `ADMIN_PASSWORD`,
+      `MOD_PASSWORD`, `SESSION_SECRET`, y las opcionales de tipo de cambio y porcentaje del mod
+- [ ] En `kripta-web`: cargar `NEXT_PUBLIC_URL_DISCORD` con una invitación **que no expire**. Es la
+      conversión del sitio: sin eso el botón principal no lleva a ningún lado
+- [ ] Redeploy después de cargar variables (se leen al arrancar)
+- [ ] Verificar `/salud` del panel: tiene que decir `"base": "conectada"`. Si dice `modo: demo`, a ese
+      deploy le faltan las variables
 
 ---
 
 ## 7. Lo próximo, en orden
 
-1. Cerrar el deploy: PR #2 resuelto y mergeado, Vercel andando, login verificado.
-2. Restaurar la paleta verde y el steering en la estructura nueva (sección 2).
-3. Empezar `kripta-web` (sitio público, Versión A): hero, ranking en vivo, próximos torneos, campeones,
-   referidos, anotador de Truco. Objetivo del sitio: **captación** — que el de afuera termine en el Discord.
-4. Bot de Discord: inscripción por reacción y rol de campeón automático. Es lo que le saca la mitad del
-   trabajo manual al moderador.
+1. **Cerrar los deploys:** base Postgres creada, variables cargadas, `/salud` en verde y login verificado.
+2. **Exponer los datos reales al sitio público.** Falta una ruta pública en el panel que devuelva el JSON
+   con el shape `DatosPublicos` de `kripta-web/app/lib/datos.ts` (temporada, próximo torneo, torneos,
+   ranking, campeones). Después basta con setear `PANEL_API_URL` en `kripta-web`. Hasta entonces el sitio
+   muestra datos de ejemplo y se ve completo igual.
+3. **Reemplazar el logo.** `kripta-web/app/componentes/marca.tsx` tiene un lobo geométrico escrito en SVG
+   a mano, que funciona y se ve nítido. Cuando esté el logo del servidor se reemplaza **sólo ese archivo**.
+4. **Bot de Discord:** inscripción por reacción y rol de campeón automático. Es lo que le saca la mitad
+   del trabajo manual al moderador.
 5. Doble eliminación para los playoffs de temporada. Exportar la caja a CSV para el contador.
+6. `// @ts-check` + JSDoc en el dominio y la capa de datos del panel, de a poco.
 
 ## 8. Pendientes del dueño (no son de código)
 
 - Comprar el dominio. Verificado: `kripta.com`, `monsterland.com` y `kripta.com.ar` están **ocupados**.
   Libres: `monsterland.gg` y `kripta.gg` (~USD 50-90/año, es el TLD estándar del gaming),
   o `kriptaland.com` / `lakripta.com` (~USD 10-15/año). Recomendado: `monsterland.gg` en Cloudflare Registrar.
-- Subir el logo del servidor al repo (PNG en la mejor calidad posible) para usarlo en el sitio público.
-- Elegir el nombre de la moneda interna.
+- Subir el logo del servidor en la mejor calidad posible (PNG grande o vectorial). **Ya no bloquea**:
+  hay un logo SVG provisorio andando.
+- Elegir el nombre de la moneda interna, y resolver la tensión de la sección 4, regla 3.
 - Dar de alta en ARCA la actividad de organización de eventos (el monotributo permite hasta 3 actividades
   simultáneas; hoy tiene una, cadetería). Consultar con contador: IIBB provincial y cobros del exterior.
 - Una hora de consulta con un abogado de su partido antes del primer cobro.
+
+---
+
+## 9. Notas del entorno de trabajo (para el próximo agente)
+
+Cosas que cuestan descubrir y hacen perder tiempo:
+
+- **Node está en `/root/.nvm/versions/node/v22.23.2/bin` y NO en el `PATH`.** Hay que exportarlo en cada
+  comando de bash.
+- **No hay `diff` instalado.** Usar `git diff <commit>:<archivo> <commit>:<archivo>`.
+- **Los procesos en background NO sobreviven entre llamadas de bash** (ni con `setsid`, `nohup`, `disown`
+  ni `run_in_background`). No se puede levantar un servidor en una llamada y usarlo en otra.
+- **Para verificar algo visualmente:** guardar el HTML servido, generar con Node un archivo `.js` que lo
+  embeba con `JSON.stringify` y pasárselo a Playwright con el parámetro `filename`, usando
+  `page.setContent`. Ese archivo tiene que estar bajo
+  `/projects/sandbox/.kiro/artifacts/screenshots` (otros paths dan "outside allowed roots"), `file://`
+  está bloqueado, y dentro de ese código no existen `require` ni `import` dinámico.
+- **El agente no puede crear repos** (403) ni tocar cuentas de Vercel. Los repos los crea el dueño y
+  después hay que pedirle que dé acceso a la integración de Kiro, si no el `push` falla con 403.
