@@ -81,6 +81,31 @@ rutasPublicas.post("/sembrar", requiereLogin, requiereAdmin, async (req, res) =>
   res.redirect("/");
 });
 
+// ---------------- API para el sitio público ----------------
+
+/**
+ * Los datos que muestra `kripta-web`, en JSON.
+ *
+ * Es el contrato del tipo `DatosPublicos` de `kripta-web/app/lib/datos.ts`. Si cambia el shape
+ * acá, hay que cambiar el tipo allá: son dos repos y no hay nada que los sincronice solo.
+ *
+ * El armado vive en `repo.datosPublicos()`, no acá: esta ruta sólo traduce HTTP.
+ *
+ * Sobre el `Access-Control-Allow-Origin`: hoy no hace falta, porque `kripta-web` hace el fetch
+ * desde su propio servidor (Server Component) y CORS es una restricción del navegador, no del
+ * servidor. Va igual, con `*`, para que mañana se pueda leer desde el navegador —por ejemplo un
+ * ranking que se refresque solo sin recargar la página— sin tener que volver a tocar el panel.
+ * Es seguro porque acá no hay nada privado ni cookies en juego: es exactamente la misma
+ * información que ya está en `/publico/ranking`, que también es abierta.
+ */
+rutasPublicas.get("/publico/datos", async (_req, res) => {
+  const repo = await abrirRepo();
+  const datos = await repo.datosPublicos({ miembrosDiscord: config.miembrosDiscord });
+  res.set("Access-Control-Allow-Origin", "*");
+  // En modo demo los datos son inventados: que el sitio lo sepa y pueda avisarlo.
+  res.json({ ...datos, esEjemplo: config.modoDemo });
+});
+
 // ---------------- vista pública ----------------
 
 /**

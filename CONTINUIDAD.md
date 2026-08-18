@@ -42,7 +42,7 @@ el sitio público lo visitan desconocidos y se juega el posicionamiento en Googl
 - JavaScript plano, **sin paso de build**. No hay TypeScript ni bundler.
 - Base **Postgres** (`pg`). Sin `DATABASE_URL` arranca en **modo demo** con los datos en memoria y lo avisa en pantalla.
 - 3 dependencias de producción: `express`, `cookie-parser`, `pg`. Las tres JS puro, **ninguna nativa**.
-- 63 tests (`npm test`) + prueba de humo por HTTP (`node scripts/humo.js`, 44 chequeos).
+- 63 tests (`npm test`) + prueba de humo por HTTP (`node scripts/humo.js`, 66 chequeos).
 - Paleta verde aplicada, steering actualizado y devcontainer restaurado.
 
 ### Ramas y PRs
@@ -176,7 +176,13 @@ Un cambio que rompa una de estas está mal aunque el código funcione y los test
 - [ ] Crear la base **Postgres** (Storage → Create Database) y cargar en el panel: `ADMIN_PASSWORD`,
       `MOD_PASSWORD`, `SESSION_SECRET`, y las opcionales de tipo de cambio y porcentaje del mod
 - [ ] En `kripta-web`: cargar `NEXT_PUBLIC_URL_DISCORD` con una invitación **que no expire**. Es la
-      conversión del sitio: sin eso el botón principal no lleva a ningún lado
+      conversión del sitio: sin eso los botones de Discord aparecen deshabilitados a propósito
+      (antes llevaban a la página institucional de Discord, que perdía al visitante en silencio)
+- [ ] En `kripta-web`: cargar `PANEL_API_URL` con la URL del panel (sin barra al final) para que
+      el sitio pase de los datos de ejemplo a la temporada real
+- [ ] En el panel: cargar `MIEMBROS_DISCORD` con la cantidad de miembros del servidor. El panel
+      sólo conoce a los jugadores cargados a mano (hoy 8), así que sin esto el sitio anunciaría
+      esa cifra en lugar de ~140 y se vería muerto
 - [ ] Redeploy después de cargar variables (se leen al arrancar)
 - [ ] Verificar `/salud` del panel: tiene que decir `"base": "conectada"`. Si dice `modo: demo`, a ese
       deploy le faltan las variables
@@ -186,10 +192,12 @@ Un cambio que rompa una de estas está mal aunque el código funcione y los test
 ## 7. Lo próximo, en orden
 
 1. **Cerrar los deploys:** base Postgres creada, variables cargadas, `/salud` en verde y login verificado.
-2. **Exponer los datos reales al sitio público.** Falta una ruta pública en el panel que devuelva el JSON
-   con el shape `DatosPublicos` de `kripta-web/app/lib/datos.ts` (temporada, próximo torneo, torneos,
-   ranking, campeones). Después basta con setear `PANEL_API_URL` en `kripta-web`. Hasta entonces el sitio
-   muestra datos de ejemplo y se ve completo igual.
+2. ~~**Exponer los datos reales al sitio público.**~~ **Hecho.** El panel expone
+   `GET /publico/datos` con el shape `DatosPublicos` (`repo.datosPublicos()` + la ruta en
+   `src/web/rutas/publico.js`). **Lo único que falta es cargar `PANEL_API_URL` en `kripta-web`**
+   apuntando al panel, y `MIEMBROS_DISCORD` en el panel (ver sección 6). Verificado de punta a
+   punta: el sitio levantado contra el panel muestra la temporada, el torneo, el ranking y la hora
+   correcta.
 3. **Reemplazar el logo.** `kripta-web/app/componentes/marca.tsx` tiene un lobo geométrico escrito en SVG
    a mano, que funciona y se ve nítido. Cuando esté el logo del servidor se reemplaza **sólo ese archivo**.
 4. **Bot de Discord:** inscripción por reacción y rol de campeón automático. Es lo que le saca la mitad
@@ -220,6 +228,13 @@ Cosas que cuestan descubrir y hacen perder tiempo:
 - **No hay `diff` instalado.** Usar `git diff <commit>:<archivo> <commit>:<archivo>`.
 - **Los procesos en background NO sobreviven entre llamadas de bash** (ni con `setsid`, `nohup`, `disown`
   ni `run_in_background`). No se puede levantar un servidor en una llamada y usarlo en otra.
+  **Sí funcionan dentro de una misma llamada:** para probar la integración entre el panel y el sitio,
+  escribir un `.sh` que levante los dos, corra los `curl` y los mate con un `trap EXIT`, y ejecutarlo
+  de una sola vez. Así se verificó `/publico/datos` de punta a punta.
+- **Al clonar hay que correr `npm install`.** Sin eso fallan 16 tests por falta de
+  `@electric-sql/pglite` y parece que el repo está roto, cuando el problema son las dependencias.
+- **Los archivos que se escriben fuera de `/projects/sandbox/` no existen para bash** (van a un
+  snapshot de la sesión). Los scripts descartables van dentro del workspace y se borran después.
 - **Para verificar algo visualmente:** guardar el HTML servido, generar con Node un archivo `.js` que lo
   embeba con `JSON.stringify` y pasárselo a Playwright con el parámetro `filename`, usando
   `page.setContent`. Ese archivo tiene que estar bajo

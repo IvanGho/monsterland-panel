@@ -10,6 +10,37 @@
  * lo dice en la pantalla.
  */
 import crypto from "node:crypto";
+import path from "node:path";
+
+/**
+ * Carga el archivo .env de la raíz del repo, si existe.
+ *
+ * Por qué existe esto: `npm run preparar` escribe un .env con las claves, y el README te dice
+ * `npm run preparar && npm start`. Pero Node no lee .env solo, y acá no hay `dotenv` (el stack
+ * es chico a propósito). Sin esta función el .env se ignoraba **en silencio**: configurabas
+ * todo, arrancabas, y el panel seguía en modo demo con las claves "demo" / "demo-mod" sin
+ * decirte por qué. Era el bug más molesto del proyecto porque no daba ninguna señal.
+ *
+ * `process.loadEnvFile` (Node 20.12+) **no pisa** las variables que ya están en el entorno.
+ * Eso es justo lo que queremos: en Vercel mandan las variables del proyecto, y el .env sólo
+ * rellena lo que falta cuando corrés en tu máquina.
+ *
+ * Va envuelto en try/catch por la regla número uno de este archivo: si el .env no existe, o
+ * tiene una línea mal escrita, o no se puede leer, la app arranca igual.
+ */
+function cargarArchivoEnv() {
+  const ruta = path.resolve(import.meta.dirname, "..", ".env");
+  try {
+    process.loadEnvFile(ruta);
+    return { cargado: true, ruta, error: "" };
+  } catch (error) {
+    // ENOENT es el caso normal y esperado: en Vercel no hay .env y no hace falta.
+    if (error?.code === "ENOENT") return { cargado: false, ruta, error: "" };
+    return { cargado: false, ruta, error: error?.message ?? String(error) };
+  }
+}
+
+const archivoEnv = cargarArchivoEnv();
 
 /** Devuelve la primera variable de entorno que tenga algo. */
 function primera(...nombres) {
@@ -83,11 +114,18 @@ if (!secretoConfigurado && !modoDemo) {
 if (!modoDemo && claveAdminConfigurada && claveAdminConfigurada === claveModConfigurada) {
   avisos.push("ADMIN_PASSWORD y MOD_PASSWORD son iguales: el rol de moderador no está limitando nada.");
 }
+if (archivoEnv.error) {
+  avisos.push(
+    `Hay un archivo .env pero no se pudo leer, así que se está ignorando: ${archivoEnv.error}`,
+  );
+}
 
 export const config = {
   puerto: Number(process.env.PORT ?? 3000),
   enVercel,
   modoDemo,
+  /** ¿Se leyó un archivo .env? Sirve para explicar de dónde salió la configuración. */
+  usaArchivoEnv: archivoEnv.cargado,
   urlPostgres,
   claveAdmin,
   claveMod,
@@ -102,4 +140,15 @@ export const config = {
   tipoCambioFecha: primera("TIPO_CAMBIO_FECHA") || "sin fecha",
   /** Porcentaje del saldo mensual que se lleva el moderador (0.15 = 15%). */
   porcentajeMod: Number(process.env.PORCENTAJE_MOD ?? 0.15),
+  /**
+   * Cantidad de miembros del Discord, para mostrar en el sitio público.
+   *
+   * El panel no puede saberlo: sólo conoce a los jugadores que alguien cargó a mano, que son
+   * los que compitieron. Hoy son 8 contra ~140 miembros reales, así que sin esto el sitio
+   * pasaría a anunciar "8 miembros" el día que se conecte la API y se vería muerto.
+   *
+   * Se actualiza a mano, igual que el tipo de cambio. Cuando exista el bot de Discord, el
+   * número sale de la API de Discord y esta variable se puede borrar.
+   */
+  miembrosDiscord: Number(process.env.MIEMBROS_DISCORD ?? 0),
 };

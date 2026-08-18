@@ -122,10 +122,39 @@ npm start          # http://localhost:3000
 Sin `DATABASE_URL` en el `.env` arranca en modo demo. Para guardar de verdad, agregá la URL
 de un Postgres.
 
+El `.env` se lee al arrancar y **las variables del entorno le ganan al archivo**: en Vercel
+manda la configuración del proyecto y el `.env` sólo sirve en tu máquina. Si el archivo no
+existe, o tiene una línea mal escrita, el panel arranca igual y lo avisa en `/configuracion`.
+
 ```bash
 npm test            # tests de dominio y de los dos almacenes
 node scripts/humo.js  # prueba de humo: usa la app entera por HTTP
 ```
+
+---
+
+## Lo que consume el sitio público
+
+`kripta-web` no lee la base ni recalcula reglas: le pide al panel un JSON ya resuelto.
+
+| Ruta | Qué devuelve |
+|---|---|
+| `GET /publico/datos` | JSON con la temporada, el próximo torneo, los torneos abiertos, el ranking y los campeones. Sin login. |
+| `GET /publico/ranking` | La misma información en HTML, para pegar el link en el canal de torneos. |
+
+Se configura del otro lado: `PANEL_API_URL` en `kripta-web` apuntando a este panel.
+
+Tres cosas para tener en cuenta si se toca `repo.datosPublicos()`:
+
+- **Los torneos en `borrador` no salen.** El premio se anuncia antes de abrir la inscripción, y
+  un borrador es justamente un torneo cuyo premio todavía se puede cambiar.
+- **Las fechas salen con zona horaria** (`-03:00`). El formulario del panel guarda la hora sin
+  zona, y el sitio corre en UTC: sin declararla, un torneo de las 22:00 se mostraba a las 19:00.
+- **No sale nada personal ni de plata.** Sólo nombres y números agregados. Está chequeado en
+  `scripts/humo.js`.
+
+El shape corresponde al tipo `DatosPublicos` de `kripta-web/app/lib/datos.ts`. Son dos repos y
+no hay nada que los sincronice: **si cambia acá, hay que cambiarlo allá**.
 
 ---
 

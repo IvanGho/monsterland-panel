@@ -176,6 +176,67 @@ chequear(
   !publico.cuerpo.includes("Beneficio del mod") && !publico.cuerpo.includes("Egresos"),
 );
 
+// ---------------- API del sitio público ----------------
+console.log("\nAPI para kripta-web");
+const api = await pedir("/publico/datos");
+chequear("/publico/datos abre sin login", api.status === 200, `status ${api.status}`);
+chequear(
+  "/publico/datos responde JSON",
+  Boolean(api.cabeceras.get("content-type")?.includes("application/json")),
+  String(api.cabeceras.get("content-type")),
+);
+chequear(
+  "/publico/datos permite leerlo desde el navegador (CORS)",
+  api.cabeceras.get("access-control-allow-origin") === "*",
+  String(api.cabeceras.get("access-control-allow-origin")),
+);
+
+let datos = null;
+try {
+  datos = JSON.parse(api.cuerpo);
+} catch {
+  chequear("/publico/datos devuelve JSON válido", false, api.cuerpo.slice(0, 120));
+}
+
+if (datos) {
+  // El contrato que espera kripta-web/app/lib/datos.ts (tipo DatosPublicos).
+  chequear("trae la temporada activa", datos.temporada?.nombre === "Temporada I", JSON.stringify(datos.temporada));
+  // A esta altura del humo el torneo ya se jugó y se finalizó, así que no hay "próximo": el
+  // campo tiene que existir igual (en null) porque el sitio lo lee siempre.
+  chequear("el campo proximoTorneo siempre viene", "proximoTorneo" in datos, String(datos.proximoTorneo));
+  chequear(
+    "el campeón del torneo terminado entra al salón",
+    datos.campeones.length > 0 && typeof datos.campeones[0].nombre === "string",
+    JSON.stringify(datos.campeones),
+  );
+  chequear("trae las listas que espera el sitio",
+    Array.isArray(datos.torneos) && Array.isArray(datos.ranking) && Array.isArray(datos.campeones));
+  chequear("cuenta los inscriptos de cada torneo",
+    datos.torneos.every((t) => typeof t.inscriptos === "number" && typeof t.cupo === "number"));
+  chequear("el ranking viene con puesto y nombre",
+    datos.ranking.every((f) => typeof f.puesto === "number" && typeof f.nombre === "string"));
+  chequear("avisa que en modo demo los datos son de ejemplo", datos.esEjemplo === true, String(datos.esEjemplo));
+
+  // El premio se anuncia antes de abrir la inscripción: un borrador todavía se puede cambiar.
+  chequear("no publica torneos en borrador", datos.torneos.every((t) => t.estado !== "borrador"));
+
+  // La fecha tiene que llevar zona horaria o el sitio la muestra 3 horas antes.
+  chequear("las fechas viajan con zona horaria",
+    datos.torneos.every((t) => /(Z|[+-]\d{2}:?\d{2})$/.test(String(t.empiezaEn))),
+    String(datos.torneos[0]?.empiezaEn));
+
+  // El nombre del juego se manda listo para mostrar, no en minúscula.
+  chequear("el juego viene con el nombre para mostrar",
+    datos.torneos.every((t) => t.juego !== t.juego.toLowerCase() || t.juego === "Otro"),
+    String(datos.torneos[0]?.juego));
+
+  // Nada personal ni de plata puede salir por acá.
+  const crudo = JSON.stringify(datos);
+  for (const prohibido of ["discordId", "discordTag", "riotId", "aliasPago", "notas", "pagoOk", "montoCentavos"]) {
+    chequear(`/publico/datos no filtra "${prohibido}"`, !crudo.includes(prohibido));
+  }
+}
+
 // ---------------- permisos ----------------
 console.log("\npermisos por rol");
 const premioMod = await pedir(`/torneos/${idTorneo}/pagar-premio`, form(mod, { medio: "gift_card" }));
