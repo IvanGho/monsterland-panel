@@ -31,6 +31,41 @@ export function ahoraISO() {
   return new Date().toISOString();
 }
 
+/**
+ * Le pega la zona horaria argentina a una fecha que no la tiene.
+ *
+ * El formulario del panel usa `<input type="datetime-local">`, que guarda `"2026-08-18T22:00"`:
+ * sin segundos y **sin zona**. El moderador escribió las 22 pensando en la hora de acá.
+ *
+ * El problema aparece al mandarlo al sitio. `new Date("2026-08-18T22:00")` sin zona se
+ * interpreta como hora **local del que lee**, y el sitio corre en Vercel, que está en UTC: el
+ * contador y la fecha mostrarían las 19:00 en lugar de las 22:00. Tres horas antes, en el dato
+ * más importante de la página.
+ *
+ * Argentina no usa horario de verano desde 2009, así que el offset es siempre -03:00 y alcanza
+ * con declararlo. Si la fecha ya trae zona (termina en `Z` o tiene `+hh:mm`/`-hh:mm`), se deja
+ * como está.
+ */
+export function conZonaArgentina(fecha) {
+  const texto = String(fecha ?? "");
+  if (texto === "") return texto;
+  if (/(Z|[+-]\d{2}:?\d{2})$/.test(texto)) return texto;
+  const conSegundos = /T\d{2}:\d{2}$/.test(texto) ? `${texto}:00` : texto;
+  return `${conSegundos}-03:00`;
+}
+
+/**
+ * El nombre del juego como se muestra, a partir del valor que guarda el select del panel.
+ *
+ * El panel guarda `"valorant"`, `"truco"`, `"cs"`, `"otro"` en minúscula. El sitio lo imprime
+ * tal cual en la tarjeta del torneo, así que sin esto se lee "valorant 1v1".
+ */
+export function nombreDeJuego(juego) {
+  const nombres = { valorant: "Valorant", truco: "Truco", cs: "CS2", otro: "Otro" };
+  const clave = String(juego ?? "").toLowerCase();
+  return nombres[clave] ?? String(juego ?? "");
+}
+
 /** Abre el repositorio sobre el almacén configurado. */
 export async function abrirRepo() {
   return crearRepo(await almacen());
@@ -485,6 +520,144 @@ export function crearRepo(base) {
         repo.resultadosDeTemporada(temporadaId),
       ]);
       return calcularRanking(resultados, reglas);
+    },
+
+    // ---------------- datos para el sitio público ----------------
+
+    /**
+     * Todo lo que muestra `kripta-web`, ya resuelto y sin nada sensible.
+     *
+     * Por qué vive acá y no en la ruta: el sitio público **no** recalcula reglas de negocio.
+     * Si el sitio calculara el ranking habría dos implementaciones de la misma regla y tarde o
+     * temprano dirían cosas distintas (el panel mostraría un campeón y la web otro). Acá se
+     * usan las mismas funciones de `src/dominio/` que usa el panel, así que hay una sola
+     * fuente de verdad.
+     *
+     * Qué NO sale de acá, nunca: `discordId`, `discordTag`, `riotId`, `aliasPago`, `notas`,
+     * el estado de pago de cada participante, y cualquier cifra de la caja. Sólo nombres
+     * (que ya son públicos en el canal de torneos) y números agregados.
+     *
+     * Los torneos en `borrador` quedan afuera a propósito: el premio se anuncia **antes** de
+     * abrir la inscripción, y un borrador es justamente un torneo cuyo premio todavía se
+     * puede cambiar. Publicarlo rompería esa regla.
+     */
+    async datosPublicos({
+      limiteTorneos = 6,
+      limiteRanking = 10,
+      limiteCampeones = 8,
+      /**
+       * Miembros del Discord. El panel sólo conoce a los jugadores cargados a mano (los que
+       * compitieron), que son muchos menos que los miembros del servidor. Si viene un número,
+       * gana. Lo inyecta la ruta desde la config: acá no se lee el entorno.
+       */
+      miembrosDiscord = 0,
+    } = {}) {
+      const temporada = await repo.temporadaActiva();
+      const contarMiembros = (jugadores) =>
+        miembrosDiscord > 0 ? miembrosDiscord : jugadores.filter((j) => !j.baneado).length;
+
+      if (!temporada) {
+        const jugadores = await repo.jugadores();
+        return {
+          temporada: null,
+          proximoTorneo: null,
+          torneos: [],
+          ranking: [],
+          campeones: [],
+          jugadoresActivos: contarMiembros(jugadores),
+          esEjemplo: false,
+        };
+      }
+
+      // Una sola pasada por cada colección y se cruza en memoria (ver el criterio del encabezado).
+      const [torneosTemporada, jugadores, ranking, todosLosParticipantes] = await Promise.all([
+        repo.torneos({ temporadaId: temporada.id }),
+        repo.jugadores(),
+        repo.rankingDeTemporada(temporada.id),
+        base.listar(COLECCIONES.participantes),
+      ]);
+
+      const nombrePorJugador = new Map(jugadores.map((j) => [j.id, j.nombre]));
+      const participantesPorTorneo = new Map();
+      for (const p of todosLosParticipantes) {
+        if (!participantesPorTorneo.has(p.torneoId)) participantesPorTorneo.set(p.torneoId, []);
+        participantesPorTorneo.get(p.torneoId).push(p);
+      }
+
+      /** Pasa un torneo del panel a la forma que espera el sitio, sin campos internos. */
+      const aTorneoPublico = (t) => ({
+        id: t.id,
+        nombre: t.nombre,
+        juego: nombreDeJuego(t.juego),
+        formato: t.formato,
+        empiezaEn: conZonaArgentina(t.empiezaEn),
+        inscripcionCentavos: t.inscripcionCentavos ?? 0,
+        premioCentavos: t.premioCentavos ?? 0,
+        premioDescripcion: t.premioDescripcion ?? null,
+        cupo: t.cupo,
+        inscriptos: (participantesPorTorneo.get(t.id) ?? []).length,
+        estado: t.estado,
+      });
+
+      // Sólo lo ya anunciado, del más próximo al más lejano.
+      const anunciados = torneosTemporada
+        .filter((t) => t.estado === "inscripcion" || t.estado === "en_juego")
+        .sort((a, b) => String(a.empiezaEn).localeCompare(String(b.empiezaEn)))
+        .map(aTorneoPublico);
+
+      const ahora = ahoraISO();
+      const proximoTorneo =
+        anunciados.find((t) => t.empiezaEn >= ahora) ?? anunciados[0] ?? null;
+
+      // Campeones: el puesto 1 de cada torneo cerrado, del más reciente al más viejo.
+      const finalizados = torneosTemporada
+        .filter((t) => t.estado === "finalizado")
+        .sort((a, b) => String(b.empiezaEn).localeCompare(String(a.empiezaEn)))
+        .slice(0, limiteCampeones);
+
+      const campeones = [];
+      for (const torneo of finalizados) {
+        const puestosTorneo = await repo.puestosDeTorneo(torneo.id);
+        const primero = puestosTorneo.find((p) => p.puesto === 1);
+        if (!primero) continue;
+        const participante = (participantesPorTorneo.get(torneo.id) ?? []).find(
+          (p) => p.id === primero.participanteId,
+        );
+        if (!participante) continue;
+        // En 2v2/3v3 el campeón es el equipo: se listan los integrantes.
+        const nombre =
+          (participante.jugadorIds ?? [])
+            .map((id) => nombrePorJugador.get(id))
+            .filter(Boolean)
+            .join(" + ") || participante.nombre;
+        campeones.push({
+          nombre,
+          torneo: torneo.nombre,
+          juego: nombreDeJuego(torneo.juego),
+          fecha: String(torneo.empiezaEn).slice(0, 10),
+        });
+      }
+
+      return {
+        temporada: {
+          nombre: temporada.nombre,
+          desdeFecha: temporada.desdeFecha,
+          hastaFecha: temporada.hastaFecha,
+          premioFinalCentavos: temporada.premioFinalCentavos ?? 0,
+        },
+        proximoTorneo,
+        torneos: anunciados.slice(0, limiteTorneos),
+        ranking: ranking.slice(0, limiteRanking).map((f, i) => ({
+          puesto: i + 1,
+          nombre: nombrePorJugador.get(f.jugadorId) ?? "?",
+          puntos: f.puntos,
+          torneos: f.torneos,
+          titulos: f.primeros,
+        })),
+        campeones,
+        jugadoresActivos: contarMiembros(jugadores),
+        esEjemplo: false,
+      };
     },
 
     // ---------------- caja ----------------
